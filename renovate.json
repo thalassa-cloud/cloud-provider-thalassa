@@ -1,0 +1,13 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:base"
+  ],
+  "packageRules": [
+    {
+      "packagePatterns": [ "k8s.io/*" ],
+      "excludePackageNames": ["k8s.io/klog"],
+      "groupName": "k8s.io"
+    }
+  ]
+}
