@@ -1,0 +1,5 @@
+FROM gcr.io/distroless/static:nonroot
+EXPOSE 8080 2112
+
+COPY cloud-provider-thalassa /cloud-provider-thalassa
+ENTRYPOINT ["/cloud-provider-thalassa"]

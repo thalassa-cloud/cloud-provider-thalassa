@@ -1,0 +1,15 @@
+# reviewdog.yml
+
+runner:
+  govet:
+    cmd: go vet $(go list ./...)
+    format: govet
+    level: warning
+  gosec:
+    cmd: gosec -quiet -no-fail -fmt golint ./...
+    format: golint
+    level: warning
+  golangci-lint:
+    cmd: golangci-lint run ./...
+    format: golangci-lint
+    level: warning

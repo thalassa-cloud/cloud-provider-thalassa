@@ -1,0 +1,80 @@
+version: 2
+
+builds:
+  - id: thalassa-cloud-controller-manager
+    main: ./cmd/thalassa-cloud-controller-manager
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+dockers:
+  - image_templates: ["ghcr.io/thalassa-cloud/{{ .ProjectName }}/cloud-controller-manager:{{ .Version }}-amd64"]
+    use: buildx
+    dockerfile: Dockerfile.goreleaser
+    goos: linux
+    goarch: amd64
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.url=https://github.com/thalassa-cloud/{{ .ProjectName }}"
+      - "--label=org.opencontainers.image.source=https://github.com/thalassa-cloud/{{ .ProjectName }}"
+
+  - image_templates: ["ghcr.io/thalassa-cloud/{{ .ProjectName }}/cloud-controller-manager:{{ .Version }}-arm64v8"]
+    use: buildx
+    dockerfile: Dockerfile.goreleaser
+    goos: linux
+    goarch: arm64
+    build_flag_templates:
+      - "--platform=linux/arm64/v8"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.url=https://github.com/thalassa-cloud/{{ .ProjectName }}"
+      - "--label=org.opencontainers.image.source=https://github.com/thalassa-cloud/{{ .ProjectName }}"
+
+docker_manifests:
+  - name_template: "ghcr.io/thalassa-cloud/{{ .ProjectName }}/cloud-controller-manager:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/thalassa-cloud/{{ .ProjectName }}/cloud-controller-manager:{{ .Version }}-amd64"
+      - "ghcr.io/thalassa-cloud/{{ .ProjectName }}/cloud-controller-manager:{{ .Version }}-arm64v8"
+
+docker_signs:
+  - cmd: cosign
+    artifacts: manifests
+    args:
+      - "sign"
+      - "${artifact}"
+      - "--yes"
+
+sboms:
+  - artifacts: archive
+
+before:
+  hooks:
+    - go mod tidy
+
+dist: ./bin
+
+# Documentation: https://goreleaser.com/customization/changelog/
+changelog:
+  use: github
+  sort: asc
+  groups:
+    - title: 'Dependencies'
+      regexp: "^Update dependency"
+      order: 999
+    - title: Changes
+      order: 0
+  filters:
+    # Commit messages matching the regexp listed here will be removed from the changelog
+    exclude:
+      - '^Merge branch'
