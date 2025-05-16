@@ -1,7 +1,7 @@
 BINARY = thalassa-cloud-controller-manager
 GOARCH = amd64
 
-IMAGE 		?=registry.github.com/thalassa-cloud/thalassa-cloud-controller-manager
+IMAGE 		?=ghcr.io/thalassa-cloud/thalassa-cloud-controller-manager
 VERSION		?=local
 COMMIT		?=$(shell git rev-parse HEAD)
 BUILD_DATE	?=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -43,23 +43,10 @@ fmt:
 docker: linux
 	docker build -t ${IMAGE}:${VERSION}${BRANCH} .
 
-compose-down:
-	docker compose down -v
-
-compose:
-	docker compose up -d database nats-server
-	sleep 5
-	./scripts/create-streams.sh
-
 clean:
 	-rm -f bin/${BINARY}-* bin/${BINARY}
 
 review:
 	reviewdog -diff="git diff FETCH_HEAD" -tee
 
-swagger:
-	swag init --parseDependency --parseInternal
-
 .PHONY: link linux darwin windows test vet fmt clean
-
-	
