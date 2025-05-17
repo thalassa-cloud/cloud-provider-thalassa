@@ -129,7 +129,7 @@ func (lb *loadbalancer) desiredVpcLoadbalancerListener(service *corev1.Service) 
 
 	listener := make([]iaas.VpcLoadbalancerListener, len(service.Spec.Ports))
 	for i, port := range service.Spec.Ports {
-		listener[i].Name = getPortName(port)
+		listener[i].Name = getPortName(lb.GetLoadBalancerName(context.Background(), lb.cluster, service), port)
 		listener[i].Description = fmt.Sprintf("Listener for Kubernetes service %s", service.GetName())
 		listener[i].Protocol = iaas.LoadbalancerProtocol(strings.ToLower(string(port.Protocol)))
 		listener[i].Port = int(port.Port)

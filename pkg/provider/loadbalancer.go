@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/thalassa-cloud/client-go/filters"
@@ -380,11 +381,11 @@ func (lb *loadbalancer) createVpcLoadbalancer(ctx context.Context, lbName string
 	return created, nil
 }
 
-func getPortName(port corev1.ServicePort) string {
+func getPortName(lbName string, port corev1.ServicePort) string {
 	if port.Name != "" {
-		return port.Name
+		return fmt.Sprintf("%s-%s", lbName, port.Name)
 	}
-	return fmt.Sprintf("p%d", port.Port)
+	return fmt.Sprintf("%s-%s-p%d", lbName, strings.ToLower(string(port.Protocol)), port.Port)
 }
 
 func (lb *loadbalancer) getLoadBalancerCreatePollInterval() time.Duration {

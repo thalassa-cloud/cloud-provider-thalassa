@@ -24,9 +24,11 @@ func (l *loadbalancer) getDesiredVpcLoadbalancerTargetGroups(service *corev1.Ser
 	// 	enableStickySessions, _ = strconv.ParseBool(val)
 	// }
 
+	lbName := l.GetLoadBalancerName(context.Background(), l.cluster, service)
+
 	for _, svcPort := range service.Spec.Ports {
 		backend := iaas.VpcLoadbalancerTargetGroup{
-			Name: getPortName(svcPort),
+			Name: getPortName(lbName, svcPort),
 			// Servers:           []iaas.VpcLoadbalancerServer{},
 			TargetPort: int(svcPort.NodePort),
 			Protocol:   iaas.LoadbalancerProtocol(strings.ToLower(string(svcPort.Protocol))),
