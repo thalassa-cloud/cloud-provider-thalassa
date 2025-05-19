@@ -187,36 +187,76 @@ func (c *Client) DetachServerFromTargetGroup(ctx context.Context, detachRequest 
 }
 
 type VpcLoadbalancerTargetGroup struct {
-	Identity      string      `json:"identity"`
-	Name          string      `json:"name"`
-	Slug          string      `json:"slug"`
-	Description   string      `json:"description"`
-	CreatedAt     time.Time   `json:"createdAt"`
-	UpdatedAt     time.Time   `json:"updatedAt"`
-	ObjectVersion int         `json:"objectVersion"`
-	Labels        Labels      `json:"labels,omitempty"`
-	Annotations   Annotations `json:"annotations,omitempty"`
+	// Identity is the identity of the target group.
+	Identity string `json:"identity"`
+	// Name is the name of the target group.
+	Name string `json:"name"`
+	// Slug is the slug of the target group.
+	Slug string `json:"slug"`
+	// Description is a human-readable description of the target group.
+	Description string `json:"description"`
+	// CreatedAt is the time the target group was created.
+	CreatedAt time.Time `json:"createdAt"`
+	// UpdatedAt is the time the target group was updated.
+	UpdatedAt time.Time `json:"updatedAt"`
+	// ObjectVersion is the version of the target group.
+	ObjectVersion int `json:"objectVersion"`
+	// Labels are arbitrary key-value pairs that can be used to store additional information about the target group, and are used for matching resources.
+	Labels Labels `json:"labels,omitempty"`
+	// Annotations are arbitrary key-value pairs that can be used to store additional information about the target group.
+	Annotations Annotations `json:"annotations,omitempty"`
 
-	Organisation   *base.Organisation   `json:"organisation"`
-	Vpc            *Vpc                 `json:"vpc"`
-	TargetPort     int                  `json:"targetPort"`
-	Protocol       LoadbalancerProtocol `json:"protocol"`
-	TargetSelector map[string]string    `json:"targetSelector"`
+	// Organisation is the organisation the target group belongs to.
+	Organisation *base.Organisation `json:"organisation"`
+	// Vpc is the VPC the target group belongs to.
+	Vpc *Vpc `json:"vpc"`
+	// TargetPort is the port to use for the target group.
+	TargetPort int `json:"targetPort"`
+	// Protocol is the protocol to use for the target group.
+	Protocol LoadbalancerProtocol `json:"protocol"`
+	// TargetSelector is a map of labels to match against the server labels.
+	// If a server matches the labels, it will be added to the target group.
+	// If no target selector is provided, target must be assigned manually
+	TargetSelector map[string]string `json:"targetSelector"`
 
-	LoadbalancerListeners              []VpcLoadbalancerListener           `json:"loadbalancerListeners"`
+	// EnableProxyProtocol enables proxy protocol on the target group. When enabled, the load balancer will use the proxy protocol to communicate with the target group.
+	// Enabling proxy protocl means all targets within the target group must support proxy protocol, otherwise connections may fail.
+	EnableProxyProtocol *bool `json:"enableProxyProtocol,omitempty"`
+
+	// LoadbalancingPolicy is the load balancing policy for the target group. Must be one of ROUND_ROBIN, RANDOM, or MAGLEV.
+	// The default policy is ROUND_ROBIN.
+	// ROUND_ROBIN: Connections from a listener to the target group are distributed across all target group attachments.
+	// RANDOM: Connections from a listener to the target group are distributed across all target group attachments in a random manner.
+	// MAGLEV: Connections from a listener to the target group are distributed across all target group attachments based on the MAGLEV algorithm.
+	// +optional
+	LoadbalancingPolicy *LoadbalancingPolicy `json:"loadbalancingPolicy,omitempty"`
+
+	// HealthCheck is the health check settings for the target group
+	// +optional
+	HealthCheck *BackendHealthCheck `json:"healthCheck,omitempty"`
+
+	// LoadbalancerListeners are the listeners the target group is attached to.
+	LoadbalancerListeners []VpcLoadbalancerListener `json:"loadbalancerListeners"`
+	// LoadbalancerTargetGroupAttachments are the attachments to the target group.
 	LoadbalancerTargetGroupAttachments []LoadbalancerTargetGroupAttachment `json:"loadbalancerTargetGroupAttachments"`
 }
 
 type LoadbalancerTargetGroupAttachment struct {
-	Identity                string                      `json:"identity"`
-	CreatedAt               time.Time                   `json:"createdAt"`
+	// Identity is the identity of the attachment.
+	Identity string `json:"identity"`
+	// CreatedAt is the time the attachment was created.
+	CreatedAt time.Time `json:"createdAt"`
+	// LoadbalancerTargetGroup is the target group the attachment belongs to.
 	LoadbalancerTargetGroup *VpcLoadbalancerTargetGroup `json:"loadbalancerTargetGroup"`
-	VirtualMachineInstance  *Machine                    `json:"virtualMachineInstance"`
+	// VirtualMachineInstance is the server the attachment belongs to.
+	VirtualMachineInstance *Machine `json:"virtualMachineInstance"`
 }
 
 type DetachTargetRequest struct {
+	// TargetGroupID is the identity of the target group to detach the server from.
 	TargetGroupID string `json:"targetGroupID"`
-	AttachmentID  string `json:"attachmentID"`
+	// AttachmentID is the identity of the attachment to detach.
+	AttachmentID string `json:"attachmentID"`
 }
 
 type GetTargetGroupRequest struct {
@@ -227,15 +267,73 @@ type ListTargetGroupsRequest struct {
 	Filters []filters.Filter
 }
 
+// CreateTargetGroupRequest is the request body for creating a new loadbalancer target group.
 type CreateTargetGroup struct {
-	Name           string               `json:"name"`
-	Description    string               `json:"description"`
-	Labels         Labels               `json:"labels,omitempty"`
-	Annotations    Annotations          `json:"annotations,omitempty"`
-	Vpc            string               `json:"vpc"`
-	TargetPort     int                  `json:"targetPort"`
-	Protocol       LoadbalancerProtocol `json:"protocol"`
-	TargetSelector map[string]string    `json:"targetSelector,omitempty"`
+	// Name is the name of the target group.
+	Name string `json:"name"`
+	// Description is a human-readable description of the target group.
+	Description string `json:"description"`
+	// Labels are arbitrary key-value pairs that can be used to store additional information about the target group, and are used for matching resources.
+	Labels Labels `json:"labels,omitempty"`
+	// Annotations are arbitrary key-value pairs that can be used to store additional information about the target group.
+	Annotations Annotations `json:"annotations,omitempty"`
+	// Vpc is the identity of the VPC to create the target group in.
+	Vpc string `json:"vpc"`
+	// TargetPort is the port to use for the target group. Must be between 1 and 65535.
+	TargetPort int `json:"targetPort"`
+	// Protocol is the protocol to use for the target group. Must be one of TCP, UDP, HTTP, or HTTPS.
+	Protocol LoadbalancerProtocol `json:"protocol"`
+	// TargetSelector is a map of labels to match against the server labels.
+	// If a server matches the labels, it will be added to the target group.
+	// If no target selector is provided, target must be assigned manually
+	// +optional
+	TargetSelector map[string]string `json:"targetSelector,omitempty"`
+
+	// EnableProxyProtocol enables proxy protocol on the target group. When enabled, the load balancer will use the proxy protocol to communicate with the target group.
+	// Enabling proxy protocl means all targets within the target group must support proxy protocol, otherwise connections may fail.
+	EnableProxyProtocol *bool `json:"enableProxyProtocol,omitempty"`
+
+	// LoadbalancingPolicy is the load balancing policy for the target group. Must be one of ROUND_ROBIN, RANDOM, or MAGLEV.
+	// The default policy is ROUND_ROBIN.
+	// ROUND_ROBIN: Connections from a listener to the target group are distributed across all target group attachments.
+	// RANDOM: Connections from a listener to the target group are distributed across all target group attachments in a random manner.
+	// MAGLEV: Connections from a listener to the target group are distributed across all target group attachments based on the MAGLEV algorithm.
+	// +optional
+	LoadbalancingPolicy *LoadbalancingPolicy `json:"loadbalancingPolicy,omitempty"`
+
+	// HealthCheck is the health check settings for the target group
+	// +optional
+	HealthCheck *BackendHealthCheck `json:"healthCheck,omitempty"`
+}
+
+type LoadbalancingPolicy string
+
+const (
+	LoadbalancingPolicyRoundRobin LoadbalancingPolicy = "ROUND_ROBIN"
+	LoadbalancingPolicyRandom     LoadbalancingPolicy = "RANDOM"
+	LoadbalancingPolicyMagLev     LoadbalancingPolicy = "MAGLEV"
+)
+
+type BackendHealthCheck struct {
+	// Protocol is the protocol to use for the health check
+	Protocol LoadbalancerProtocol `json:"protocol"`
+	// Port is the port to use for the health check. Must be between 1 and 65535.
+	Port int32 `json:"port"`
+	// Path is the path to use for the health check
+	// If provided, must be a valid URL path.
+	Path string `json:"path"`
+	// Interval is the interval for the health check. Time is in seconds.
+	// Minimum value is 5, maximum value is 300.
+	PeriodSeconds int `json:"periodSeconds"`
+	// Timeout is the timeout for the health check. Time is in seconds
+	// Minimum value is 1, maximum value is 300.
+	TimeoutSeconds int `json:"timeoutSeconds"`
+	// UnhealthyThreshold is the number of failures before marking the server as unhealthy
+	// Minimum value is 1, maximum value is 10.
+	UnhealthyThreshold int32 `json:"unhealthyThreshold"`
+	// HealthyThreshold is the number of successes before marking the server as healthy
+	// Minimum value is 1, maximum value is 10.
+	HealthyThreshold int32 `json:"healthyThreshold"`
 }
 
 type UpdateTargetGroupRequest struct {
@@ -244,13 +342,39 @@ type UpdateTargetGroupRequest struct {
 }
 
 type UpdateTargetGroup struct {
-	Name           string               `json:"name"`
-	Description    string               `json:"description"`
-	Labels         Labels               `json:"labels,omitempty"`
-	Annotations    Annotations          `json:"annotations,omitempty"`
-	TargetPort     int                  `json:"targetPort"`
-	Protocol       LoadbalancerProtocol `json:"protocol"`
-	TargetSelector map[string]string    `json:"targetSelector,omitempty"`
+	// Name is the name of the target group.
+	Name string `json:"name"`
+	// Description is a human-readable description of the target group.
+	Description string `json:"description"`
+	// Labels are arbitrary key-value pairs that can be used to store additional information about the target group, and are used for matching resources.
+	Labels Labels `json:"labels,omitempty"`
+	// Annotations are arbitrary key-value pairs that can be used to store additional information about the target group.
+	Annotations Annotations `json:"annotations,omitempty"`
+	// TargetPort is the port to use for the target group. Must be between 1 and 65535.
+	TargetPort int `json:"targetPort"`
+	// Protocol is the protocol to use for the target group. Must be one of TCP, UDP, HTTP, or HTTPS.
+	Protocol LoadbalancerProtocol `json:"protocol"`
+	// TargetSelector is a map of labels to match against the server labels.
+	// If a server matches the labels, it will be added to the target group.
+	// If no target selector is provided, target must be assigned manually
+	// +optional
+	TargetSelector map[string]string `json:"targetSelector,omitempty"`
+
+	// EnableProxyProtocol enables proxy protocol on the target group. When enabled, the load balancer will use the proxy protocol to communicate with the target group.
+	// Enabling proxy protocl means all targets within the target group must support proxy protocol, otherwise connections may fail.
+	EnableProxyProtocol *bool `json:"enableProxyProtocol,omitempty"`
+
+	// LoadbalancingPolicy is the load balancing policy for the target group. Must be one of ROUND_ROBIN, RANDOM, or MAGLEV.
+	// The default policy is ROUND_ROBIN.
+	// ROUND_ROBIN: Connections from a listener to the target group are distributed across all target group attachments.
+	// RANDOM: Connections from a listener to the target group are distributed across all target group attachments in a random manner.
+	// MAGLEV: Connections from a listener to the target group are distributed across all target group attachments based on the MAGLEV algorithm.
+	// +optional
+	LoadbalancingPolicy *LoadbalancingPolicy `json:"loadbalancingPolicy,omitempty"`
+
+	// HealthCheck is the health check settings for the target group
+	// +optional
+	HealthCheck *BackendHealthCheck `json:"healthCheck,omitempty"`
 }
 
 type AttachTarget struct {
