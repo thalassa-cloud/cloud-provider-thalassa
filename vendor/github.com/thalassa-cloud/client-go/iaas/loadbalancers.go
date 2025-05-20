@@ -78,16 +78,16 @@ func (c *Client) CreateLoadbalancer(ctx context.Context, create CreateLoadbalanc
 }
 
 // UpdateLoadbalancer updates an existing loadbalancer.
-func (c *Client) UpdateLoadbalancer(ctx context.Context, update UpdateLoadbalancer) (*VpcLoadbalancer, error) {
-	if update.Identity == "" {
-		return nil, fmt.Errorf("identity is required")
+func (c *Client) UpdateLoadbalancer(ctx context.Context, loadbalancerIdentity string, update UpdateLoadbalancer) (*VpcLoadbalancer, error) {
+	if loadbalancerIdentity == "" {
+		return nil, fmt.Errorf("identity of the loadbalancer to update is required")
 	}
 
 	var loadbalancer *VpcLoadbalancer
 	req := c.R().
 		SetBody(update).SetResult(&loadbalancer)
 
-	resp, err := c.Do(ctx, req, client.PUT, fmt.Sprintf("%s/%s", LoadbalancerEndpoint, update.Identity))
+	resp, err := c.Do(ctx, req, client.PUT, fmt.Sprintf("%s/%s", LoadbalancerEndpoint, loadbalancerIdentity))
 	if err != nil {
 		return nil, err
 	}
@@ -120,9 +120,13 @@ type ListLoadbalancersRequest struct {
 }
 
 type CreateLoadbalancer struct {
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Labels      Labels      `json:"labels,omitempty"`
+	// Name is the name of the loadbalancer.
+	Name string `json:"name"`
+	// Description is the description of the loadbalancer.
+	Description string `json:"description"`
+	// Labels are arbitrary key-value pairs that can be used to store additional information about the loadbalancer, and are used for matching resources.
+	Labels Labels `json:"labels,omitempty"`
+	// Annotations are arbitrary key-value pairs that can be used to store additional information about the loadbalancer, and are used for matching resources.
 	Annotations Annotations `json:"annotations,omitempty"`
 
 	// Subnet is the subnet in which the loadbalancer will be deployed.
@@ -145,12 +149,16 @@ type CreateLoadbalancer struct {
 }
 
 type UpdateLoadbalancer struct {
-	Name             string      `json:"name"`
-	Identity         string      `json:"identity"`
-	Description      string      `json:"description"`
-	Labels           Labels      `json:"labels,omitempty"`
-	Annotations      Annotations `json:"annotations,omitempty"`
-	DeleteProtection bool        `json:"deleteProtection"`
+	// Name is the name of the loadbalancer.
+	Name string `json:"name"`
+	// Description is the description of the loadbalancer.
+	Description string `json:"description"`
+	// Labels are arbitrary key-value pairs that can be used to store additional information about the loadbalancer, and are used for matching resources.
+	Labels Labels `json:"labels,omitempty"`
+	// Annotations are arbitrary key-value pairs that can be used to store additional information about the loadbalancer, and are used for matching resources.
+	Annotations Annotations `json:"annotations,omitempty"`
+	// DeleteProtection is a flag that indicates whether the loadbalancer should be protected from deletion.
+	DeleteProtection bool `json:"deleteProtection"`
 
 	// SecurityGroupAttachments is a list of security group identities that will be attached to the loadbalancer.
 	SecurityGroupAttachments []string `json:"securityGroupAttachments,omitempty"`

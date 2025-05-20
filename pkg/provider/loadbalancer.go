@@ -323,37 +323,6 @@ func (lb *loadbalancer) createVpcLoadbalancer(ctx context.Context, lbName string
 		return nil, fmt.Errorf("no subnet found for deploying loadbalancer for service %s", service.GetName())
 	}
 
-	// parse the annotations from the service
-	// serverTimeout := int32(6000)
-	// if val, ok := service.Annotations[LoadbalancerAnnotationServerTimeout]; ok {
-	// 	timeout, err := strconv.ParseInt(val, 0, 32)
-	// 	if err != nil {
-	// 		klog.Errorf("failed to parse server-timeout annotation: %v", err)
-	// 		return nil, fmt.Errorf("failed to parse server-timeout annotation: %v", err)
-	// 	}
-	// 	serverTimeout = int32(timeout)
-	// }
-
-	// clientUsageTimeout := int32(6000)
-	// if val, ok := service.Annotations[LoadbalancerAnnotationClientTimeout]; ok {
-	// 	timeout, err := strconv.ParseInt(val, 0, 32)
-	// 	if err != nil {
-	// 		klog.Errorf("failed to parse client-timeout annotation: %v", err)
-	// 		return nil, fmt.Errorf("failed to parse client-timeout annotation: %v", err)
-	// 	}
-	// 	clientUsageTimeout = int32(timeout)
-	// }
-
-	// connectTimeout := int32(10000)
-	// if val, ok := service.Annotations[LoadbalancerAnnotationConnectTimeout]; ok {
-	// 	timeout, err := strconv.ParseInt(val, 0, 32)
-	// 	if err != nil {
-	// 		klog.Errorf("failed to parse connect-timeout annotation: %v", err)
-	// 		return nil, fmt.Errorf("failed to parse connect-timeout annotation: %v", err)
-	// 	}
-	// 	connectTimeout = int32(timeout)
-	// }
-
 	internalLoadbalancer := false
 	if val, ok := service.Annotations[LoadbalancerAnnotationInternal]; ok {
 		internalLoadbalancer, _ = strconv.ParseBool(val)

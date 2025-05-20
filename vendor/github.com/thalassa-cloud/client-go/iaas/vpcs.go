@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/thalassa-cloud/client-go/filters"
 	"github.com/thalassa-cloud/client-go/pkg/client"
 )
 
@@ -11,10 +12,21 @@ const (
 	VpcEndpoint = "/v1/vpcs"
 )
 
+type ListVpcsRequest struct {
+	Filters []filters.Filter
+}
+
 // ListVpcs lists all VPCs for a given organisation.
-func (c *Client) ListVpcs(ctx context.Context) ([]Vpc, error) {
+func (c *Client) ListVpcs(ctx context.Context, request *ListVpcsRequest) ([]Vpc, error) {
 	vpcs := []Vpc{}
 	req := c.R().SetResult(&vpcs)
+	if request != nil {
+		for _, filter := range request.Filters {
+			for k, v := range filter.ToParams() {
+				req.SetQueryParam(k, v)
+			}
+		}
+	}
 
 	resp, err := c.Do(ctx, req, client.GET, VpcEndpoint)
 	if err != nil {
