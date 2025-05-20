@@ -10,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 )
 
 func (lb *loadbalancer) getTargetGroupIdentityForListener(service *corev1.Service, listener iaas.VpcLoadbalancerListener, targetGroups []iaas.VpcLoadbalancerTargetGroup) string {
@@ -67,18 +68,16 @@ func (lb *loadbalancer) updateVpcLoadbalancerListener(ctx context.Context, servi
 				klog.Infof("updating listener %q for loadbalancer %q with target group %q", listenerToUpdate.Name, loadbalancer.Name, targetGroupIdentity)
 				// update the listener
 				if _, err := lb.iaasClient.UpdateListener(ctx, loadbalancer.Identity, listener.Identity, iaas.UpdateListener{
-					Name:        listenerToUpdate.Name,
-					Description: listenerToUpdate.Description,
-					Labels:      listenerToUpdate.Labels,
-					Annotations: listenerToUpdate.Annotations,
-
-					// routing info
-					Port:        listenerToUpdate.Port,
-					Protocol:    listenerToUpdate.Protocol,
-					TargetGroup: targetGroupIdentity,
-
-					// TODO: support ACLs
-					// AllowedSources: listenerToUpdate.AllowedSources,
+					Name:                  listenerToUpdate.Name,
+					Description:           listenerToUpdate.Description,
+					Labels:                listenerToUpdate.Labels,
+					Annotations:           listenerToUpdate.Annotations,
+					Port:                  listenerToUpdate.Port,
+					Protocol:              listenerToUpdate.Protocol,
+					TargetGroup:           targetGroupIdentity,
+					ConnectionIdleTimeout: listenerToUpdate.ConnectionIdleTimeout,
+					MaxConnections:        listenerToUpdate.MaxConnections,
+					AllowedSources:        listenerToUpdate.AllowedSources,
 				}); err != nil {
 					return fmt.Errorf("failed to update listener: %v", err)
 				}
@@ -96,15 +95,16 @@ func (lb *loadbalancer) updateVpcLoadbalancerListener(ctx context.Context, servi
 			}
 			klog.Infof("creating listener %q for loadbalancer %q with target group %q", listener.Name, loadbalancer.Name, targetGroupIdentity)
 			if _, err := lb.iaasClient.CreateListener(ctx, loadbalancer.Identity, iaas.CreateListener{
-				Name:        listener.Name,
-				Description: listener.Description,
-				Labels:      listener.Labels,
-				Annotations: listener.Annotations,
-				// routing info
-				Port:           listener.Port,
-				Protocol:       listener.Protocol,
-				TargetGroup:    targetGroupIdentity,
-				AllowedSources: listener.AllowedSources,
+				Name:                  listener.Name,
+				Description:           listener.Description,
+				Labels:                listener.Labels,
+				Annotations:           listener.Annotations,
+				Port:                  listener.Port,
+				Protocol:              listener.Protocol,
+				TargetGroup:           targetGroupIdentity,
+				AllowedSources:        listener.AllowedSources,
+				ConnectionIdleTimeout: listener.ConnectionIdleTimeout,
+				MaxConnections:        listener.MaxConnections,
 			}); err != nil {
 				return fmt.Errorf("failed to create listener: %v", err)
 			}
@@ -127,6 +127,15 @@ func (lb *loadbalancer) desiredVpcLoadbalancerListener(service *corev1.Service) 
 		}
 	}
 
+	connectionTimeout, err := getIntAnnotation(service, LoadbalancerAnnotationIdleConnectionTimeout, DefaultIdleConnectionTimeout)
+	if err != nil {
+		klog.Errorf("failed to get idle connection timeout: %v", err)
+	}
+	maxConnections, err := getIntAnnotation(service, LoadbalancerAnnotationMaxConnections, DefaultMaxConnections)
+	if err != nil {
+		klog.Errorf("failed to get max connections: %v", err)
+	}
+
 	listener := make([]iaas.VpcLoadbalancerListener, len(service.Spec.Ports))
 	for i, port := range service.Spec.Ports {
 		listener[i].Name = getPortName(lb.GetLoadBalancerName(context.Background(), lb.cluster, service), port)
@@ -140,6 +149,8 @@ func (lb *loadbalancer) desiredVpcLoadbalancerListener(service *corev1.Service) 
 		listener[i].Labels = lb.GetLabelsForVpcLoadbalancerTargetGroup(service, int(port.Port), string(port.Protocol))
 		listener[i].Annotations = lb.GetAnnotationsForVpcLoadbalancer(service)
 		listener[i].AllowedSources = aclAllowedSources
+		listener[i].ConnectionIdleTimeout = ptr.To(uint32(connectionTimeout))
+		listener[i].MaxConnections = ptr.To(uint32(maxConnections))
 	}
 	return listener
 }

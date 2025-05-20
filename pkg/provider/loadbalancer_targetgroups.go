@@ -9,39 +9,104 @@ import (
 	"github.com/thalassa-cloud/client-go/iaas"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
+)
+
+const (
+	DefaultHealthCheckPath               = "/healthz"
+	DefaultHealthCheckTimeoutSeconds     = 5
+	DefaultHealthCheckPeriodSeconds      = 10
+	DefaultHealthCheckHealthyThreshold   = 2
+	DefaultHealthCheckUnhealthyThreshold = 3
+	DefaultHealthCheckProtocol           = "http"
 )
 
 func (l *loadbalancer) getDesiredVpcLoadbalancerTargetGroups(service *corev1.Service, nodes []*corev1.Node) ([]iaas.VpcLoadbalancerTargetGroup, error) {
 	tgs := []iaas.VpcLoadbalancerTargetGroup{}
 
-	// proxyProtocol := false
-	// if val, ok := service.Annotations[LoadbalancerAnnotationEnableProxyProtocol]; ok {
-	// 	proxyProtocol, _ = strconv.ParseBool(val)
-	// }
+	enableProxyProtocol, err := getBoolAnnotation(service, LoadbalancerAnnotationEnableProxyProtocol, DefaultEnableProxyProtocol)
+	if err != nil {
+		klog.Errorf("failed to get enable proxy protocol: %v", err)
+	}
 
-	// enableStickySessions := false
-	// if val, ok := service.Annotations[LoadbalancerAnnotationEnableStickySessions]; ok {
-	// 	enableStickySessions, _ = strconv.ParseBool(val)
-	// }
+	loadbalancingPolicy, err := GetLoadbalancingPolicy(service)
+	if err != nil {
+		klog.Errorf("failed to get loadbalancing policy: %v", err)
+	}
+
+	healthCheckEnabled, err := getBoolAnnotation(service, LoadbalancerAnnotationHealthCheckEnabled, false)
+	if err != nil {
+		klog.Errorf("failed to get health check enabled: %v", err)
+	}
+
+	healthCheckPath, err := getStringAnnotation(service, LoadbalancerAnnotationHealthCheckPath, DefaultHealthCheckPath)
+	if err != nil {
+		klog.Errorf("failed to get health check path: %v", err)
+	}
+	healthCheckPort, err := getIntAnnotation(service, LoadbalancerAnnotationHealthCheckPort, -1)
+	if err != nil {
+		klog.Errorf("failed to get health check port: %v", err)
+	}
+	healthCheckProtocol, err := getStringAnnotation(service, LoadbalancerAnnotationHealthCheckProtocol, DefaultHealthCheckProtocol)
+	if err != nil {
+		klog.Errorf("failed to get health check protocol: %v", err)
+	}
+	healthCheckTimeoutSeconds, err := getIntAnnotation(service, LoadbalancerAnnotationHealthCheckTimeout, DefaultHealthCheckTimeoutSeconds)
+	if err != nil {
+		klog.Errorf("failed to get health check timeout seconds: %v", err)
+	}
+	healthCheckPeriodSeconds, err := getIntAnnotation(service, LoadbalancerAnnotationHealthCheckInterval, DefaultHealthCheckPeriodSeconds)
+	if err != nil {
+		klog.Errorf("failed to get health check period seconds: %v", err)
+	}
+	healthCheckHealthyThreshold, err := getIntAnnotation(service, LoadbalancerAnnotationHealthCheckUpThreshold, DefaultHealthCheckHealthyThreshold)
+	if err != nil {
+		klog.Errorf("failed to get health check healthy threshold: %v", err)
+	}
+	healthCheckUnhealthyThreshold, err := getIntAnnotation(service, LoadbalancerAnnotationHealthCheckDownThreshold, DefaultHealthCheckUnhealthyThreshold)
+	if err != nil {
+		klog.Errorf("failed to get health check unhealthy threshold: %v", err)
+	}
 
 	lbName := l.GetLoadBalancerName(context.Background(), l.cluster, service)
 
 	for _, svcPort := range service.Spec.Ports {
 		backend := iaas.VpcLoadbalancerTargetGroup{
-			Name: getPortName(lbName, svcPort),
-			// Servers:           []iaas.VpcLoadbalancerServer{},
-			TargetPort: int(svcPort.NodePort),
-			Protocol:   iaas.LoadbalancerProtocol(strings.ToLower(string(svcPort.Protocol))),
-			Labels:     l.GetLabelsForVpcLoadbalancerTargetGroup(service, int(svcPort.Port), string(svcPort.Protocol)),
-			// EnableHealthCheck: true, // TODO: implement health check
-			// TODO: application specific health check required, using the service health check endpoint on each node
+			Name:                getPortName(lbName, svcPort),
+			TargetPort:          int(svcPort.NodePort),
+			Protocol:            iaas.LoadbalancerProtocol(strings.ToLower(string(svcPort.Protocol))),
+			Labels:              l.GetLabelsForVpcLoadbalancerTargetGroup(service, int(svcPort.Port), string(svcPort.Protocol)),
+			EnableProxyProtocol: ptr.To(enableProxyProtocol),
+			LoadbalancingPolicy: &loadbalancingPolicy,
 
 			// EnableHealthCheck: service.Spec.HealthCheckNodePort > 0, // TODO: implement health check
-			// EnableProxyProtocol:  proxyProtocol,
 			// EnableStickySessions: enableStickySessions,
 			// ServiceDiscovery:     "static",
 			// HealthCheck:          healthCheck,
 		}
+
+		if service.Spec.HealthCheckNodePort > 0 {
+			backend.HealthCheck = &iaas.BackendHealthCheck{
+				Port:               int32(service.Spec.HealthCheckNodePort),
+				Protocol:           iaas.ProtocolHTTP,
+				Path:               healthCheckPath,
+				TimeoutSeconds:     healthCheckTimeoutSeconds,
+				PeriodSeconds:      healthCheckPeriodSeconds,
+				HealthyThreshold:   int32(healthCheckHealthyThreshold),
+				UnhealthyThreshold: int32(healthCheckUnhealthyThreshold),
+			}
+		} else if healthCheckPort != -1 && healthCheckEnabled {
+			backend.HealthCheck = &iaas.BackendHealthCheck{
+				Port:               int32(healthCheckPort),
+				Protocol:           iaas.LoadbalancerProtocol(healthCheckProtocol),
+				Path:               healthCheckPath,
+				TimeoutSeconds:     healthCheckTimeoutSeconds,
+				PeriodSeconds:      healthCheckPeriodSeconds,
+				HealthyThreshold:   int32(healthCheckHealthyThreshold),
+				UnhealthyThreshold: int32(healthCheckUnhealthyThreshold),
+			}
+		}
+
 		tgs = append(tgs, backend)
 	}
 	return tgs, nil
@@ -122,13 +187,16 @@ func (l *loadbalancer) createOrUpdateTargetGroups(ctx context.Context, service *
 		if _, ok := existingTargetGroupsMap[fmt.Sprintf("%s:%d", targetGroup.Protocol, targetGroup.TargetPort)]; !ok {
 			klog.Infof("creating target group %q", targetGroup.Name)
 			created, err := l.iaasClient.CreateTargetGroup(ctx, iaas.CreateTargetGroup{
-				Vpc:         l.vpcIdentity,
-				Name:        targetGroup.Name,
-				Description: targetGroup.Description,
-				Protocol:    targetGroup.Protocol,
-				TargetPort:  targetGroup.TargetPort,
-				Labels:      targetGroup.Labels,
-				Annotations: targetGroup.Annotations,
+				Vpc:                 l.vpcIdentity,
+				Name:                targetGroup.Name,
+				Description:         targetGroup.Description,
+				Protocol:            targetGroup.Protocol,
+				TargetPort:          targetGroup.TargetPort,
+				Labels:              targetGroup.Labels,
+				Annotations:         targetGroup.Annotations,
+				HealthCheck:         targetGroup.HealthCheck,
+				EnableProxyProtocol: targetGroup.EnableProxyProtocol,
+				LoadbalancingPolicy: targetGroup.LoadbalancingPolicy,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("failed to create target group: %v", err)
@@ -163,12 +231,15 @@ func (l *loadbalancer) createOrUpdateTargetGroups(ctx context.Context, service *
 		updated, err := l.iaasClient.UpdateTargetGroup(ctx, iaas.UpdateTargetGroupRequest{
 			Identity: targetGroup.Identity,
 			UpdateTargetGroup: iaas.UpdateTargetGroup{
-				Name:        desiredTargetGroup.Name,
-				Description: desiredTargetGroup.Description,
-				Protocol:    desiredTargetGroup.Protocol,
-				TargetPort:  desiredTargetGroup.TargetPort,
-				Labels:      desiredTargetGroup.Labels,
-				Annotations: desiredTargetGroup.Annotations,
+				Name:                desiredTargetGroup.Name,
+				Description:         desiredTargetGroup.Description,
+				Protocol:            desiredTargetGroup.Protocol,
+				TargetPort:          desiredTargetGroup.TargetPort,
+				Labels:              desiredTargetGroup.Labels,
+				Annotations:         desiredTargetGroup.Annotations,
+				HealthCheck:         desiredTargetGroup.HealthCheck,
+				EnableProxyProtocol: desiredTargetGroup.EnableProxyProtocol,
+				LoadbalancingPolicy: desiredTargetGroup.LoadbalancingPolicy,
 			},
 		})
 		if err != nil {
