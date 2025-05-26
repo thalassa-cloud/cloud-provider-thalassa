@@ -111,9 +111,9 @@ func (c *Client) DeleteVolume(ctx context.Context, identity string) error {
 }
 
 // AttachVolume attaches a volume to a machine.
-func (c *Client) AttachVolume(ctx context.Context, volumeIdentity string, attach AttachVolumeRequest) (*Volume, error) {
-	var volume *Volume
-	req := c.R().SetResult(&volume).SetBody(attach)
+func (c *Client) AttachVolume(ctx context.Context, volumeIdentity string, attach AttachVolumeRequest) (*VolumeAttachment, error) {
+	var attachment *VolumeAttachment
+	req := c.R().SetResult(&attachment).SetBody(attach)
 
 	resp, err := c.Do(ctx, req, client.POST, fmt.Sprintf("%s/%s/attach", VolumeEndpoint, volumeIdentity))
 	if err != nil {
@@ -121,24 +121,23 @@ func (c *Client) AttachVolume(ctx context.Context, volumeIdentity string, attach
 	}
 
 	if err := c.Check(resp); err != nil {
-		return volume, err
+		return attachment, err
 	}
 
-	return volume, nil
+	return attachment, nil
 }
 
 // DetachVolume detaches a volume from a machine.
-func (c *Client) DetachVolume(ctx context.Context, volumeIdentity string, detach DetachVolumeRequest) (*Volume, error) {
-	var volume *Volume
-	req := c.R().SetResult(&volume).SetBody(detach)
+func (c *Client) DetachVolume(ctx context.Context, volumeIdentity string, detach DetachVolumeRequest) error {
+	req := c.R().SetBody(detach)
 	resp, err := c.Do(ctx, req, client.POST, fmt.Sprintf("%s/%s/detach", VolumeEndpoint, volumeIdentity))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if err := c.Check(resp); err != nil {
-		return volume, err
+		return err
 	}
 
-	return volume, nil
+	return nil
 }

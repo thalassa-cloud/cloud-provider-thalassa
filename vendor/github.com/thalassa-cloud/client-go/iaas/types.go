@@ -169,7 +169,7 @@ type VolumeAttachment struct {
 	Identity               string     `json:"identity"`
 	CreatedAt              time.Time  `json:"createdAt"`
 	Description            string     `json:"description"`
-	DeviceName             string     `json:"deviceName"`
+	Serial                 string     `json:"serial"`
 	AttachedToIdentity     string     `json:"attachedToIdentity"`
 	AttachedToResourceType string     `json:"attachedToResourceType"`
 	DetachmentRequestedAt  *time.Time `json:"detachmentRequestedAt,omitempty"`
@@ -307,7 +307,6 @@ type UpdateVolume struct {
 
 type AttachVolumeRequest struct {
 	Description      string `json:"description"`
-	DeviceName       string `json:"deviceName"`
 	ResourceType     string `json:"resourceType"`
 	ResourceIdentity string `json:"resourceIdentity"`
 }
