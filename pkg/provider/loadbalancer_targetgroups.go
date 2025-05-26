@@ -86,8 +86,12 @@ func (l *loadbalancer) getDesiredVpcLoadbalancerTargetGroups(service *corev1.Ser
 		}
 
 		if service.Spec.HealthCheckNodePort > 0 {
+			port := int32(service.Spec.HealthCheckNodePort)
+			if healthCheckPort > 0 {
+				port = int32(healthCheckPort)
+			}
 			backend.HealthCheck = &iaas.BackendHealthCheck{
-				Port:               int32(service.Spec.HealthCheckNodePort),
+				Port:               port,
 				Protocol:           iaas.ProtocolHTTP,
 				Path:               healthCheckPath,
 				TimeoutSeconds:     healthCheckTimeoutSeconds,
