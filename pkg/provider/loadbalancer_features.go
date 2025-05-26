@@ -23,9 +23,16 @@ func GetMaxConnections(service *corev1.Service) (int, error) {
 func GetLoadbalancingPolicy(service *corev1.Service) (iaas.LoadbalancingPolicy, error) {
 	policy, err := getStringAnnotation(service, LoadbalancerAnnotationLoadbalancingPolicy, DefaultLoadbalancingPolicy)
 	if err != nil {
-		return iaas.LoadbalancingPolicy(policy), nil
+		return iaas.LoadbalancingPolicyRoundRobin, err
 	}
-	return iaas.LoadbalancingPolicy(policy), nil
+
+	// Validate the policy value
+	switch iaas.LoadbalancingPolicy(policy) {
+	case iaas.LoadbalancingPolicyRoundRobin, iaas.LoadbalancingPolicyRandom, iaas.LoadbalancingPolicyMagLev:
+		return iaas.LoadbalancingPolicy(policy), nil
+	default:
+		return iaas.LoadbalancingPolicyRoundRobin, fmt.Errorf("invalid loadbalancing policy: %s, must be one of: ROUND_ROBIN, RANDOM, MAGLEV", policy)
+	}
 }
 
 func getStringAnnotation(service *corev1.Service, annotation string, defaultValue string) (string, error) {

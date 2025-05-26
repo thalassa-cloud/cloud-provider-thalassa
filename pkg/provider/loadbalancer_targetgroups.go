@@ -21,7 +21,7 @@ const (
 	DefaultHealthCheckProtocol           = "http"
 )
 
-func (l *loadbalancer) getDesiredVpcLoadbalancerTargetGroups(service *corev1.Service, nodes []*corev1.Node) ([]iaas.VpcLoadbalancerTargetGroup, error) {
+func (l *loadbalancer) getDesiredVpcLoadbalancerTargetGroups(service *corev1.Service, _ []*corev1.Node) ([]iaas.VpcLoadbalancerTargetGroup, error) {
 	tgs := []iaas.VpcLoadbalancerTargetGroup{}
 
 	enableProxyProtocol, err := getBoolAnnotation(service, LoadbalancerAnnotationEnableProxyProtocol, DefaultEnableProxyProtocol)
@@ -32,6 +32,7 @@ func (l *loadbalancer) getDesiredVpcLoadbalancerTargetGroups(service *corev1.Ser
 	loadbalancingPolicy, err := GetLoadbalancingPolicy(service)
 	if err != nil {
 		klog.Errorf("failed to get loadbalancing policy: %v", err)
+		return nil, err
 	}
 
 	healthCheckEnabled, err := getBoolAnnotation(service, LoadbalancerAnnotationHealthCheckEnabled, false)
@@ -86,8 +87,12 @@ func (l *loadbalancer) getDesiredVpcLoadbalancerTargetGroups(service *corev1.Ser
 		}
 
 		if service.Spec.HealthCheckNodePort > 0 {
+			port := int32(service.Spec.HealthCheckNodePort)
+			if healthCheckPort > 0 {
+				port = int32(healthCheckPort)
+			}
 			backend.HealthCheck = &iaas.BackendHealthCheck{
-				Port:               int32(service.Spec.HealthCheckNodePort),
+				Port:               port,
 				Protocol:           iaas.ProtocolHTTP,
 				Path:               healthCheckPath,
 				TimeoutSeconds:     healthCheckTimeoutSeconds,
