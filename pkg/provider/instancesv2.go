@@ -37,6 +37,9 @@ func (i *instancesV2) InstanceExists(ctx context.Context, node *corev1.Node) (bo
 	}
 	vmi, err := i.iaasClient.GetMachine(ctx, instanceID)
 	if err != nil {
+		if thalassaclient.IsNotFound(err) {
+			return false, nil
+		}
 		return false, err
 	}
 	if vmi == nil {
