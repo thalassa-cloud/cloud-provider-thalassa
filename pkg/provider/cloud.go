@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/thalassa-cloud/client-go/iaas"
 	"github.com/thalassa-cloud/client-go/pkg/client"
@@ -163,9 +164,14 @@ func thalassaCloudProviderFactory(config io.Reader) (cloudprovider.Interface, er
 			return nil, fmt.Errorf("no subnets found for vpc %s to discover the default subnet", cloudConf.VpcIdentity)
 		}
 		if len(subnets) > 1 {
-			return nil, fmt.Errorf("multiple subnets found for vpc %s to discover the default subnet", cloudConf.VpcIdentity)
+			// find the subnet with the label "kubernetes.io/role/lb"
+			cloudConf.DefaultSubnet, err = discoverDefaultSubnet(subnets)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			cloudConf.DefaultSubnet = subnets[0].Identity
 		}
-		cloudConf.DefaultSubnet = subnets[0].Identity
 	}
 
 	return &Cloud{
@@ -245,4 +251,18 @@ func (c *Cloud) HasClusterID() bool {
 
 func (c *Cloud) GetCloudConfig() CloudConfig {
 	return c.config
+}
+
+func discoverDefaultSubnet(subnets []iaas.Subnet) (string, error) {
+	for _, subnet := range subnets {
+		role, ok := subnet.Labels["kubernetes.io/role/lb"]
+		if !ok {
+			continue
+		}
+		switch strings.ToLower(role) {
+		case "true", "1", "yes":
+			return subnet.Identity, nil
+		}
+	}
+	return "", fmt.Errorf("no subnet found with the label 'kubernetes.io/role/lb'")
 }
