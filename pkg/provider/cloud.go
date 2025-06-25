@@ -155,7 +155,13 @@ func thalassaCloudProviderFactory(config io.Reader) (cloudprovider.Interface, er
 	// test access
 	vpc, err := iaasClient.GetVpc(context.Background(), cloudConf.VpcIdentity)
 	if err != nil {
+		if client.IsNotFound(err) {
+			return nil, fmt.Errorf("vpc %s not found", cloudConf.VpcIdentity)
+		}
 		return nil, fmt.Errorf("failed to test access to thalassa: %v", err)
+	}
+	if vpc == nil {
+		return nil, fmt.Errorf("invalid response from thalassa: vpc %s not found", cloudConf.VpcIdentity)
 	}
 
 	if cloudConf.DefaultSubnet == "" {
