@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/thalassa-cloud/client-go/iaas"
 	"github.com/thalassa-cloud/client-go/pkg/client"
@@ -152,9 +153,31 @@ func thalassaCloudProviderFactory(config io.Reader) (cloudprovider.Interface, er
 	}
 
 	// test access
-	_, err = iaasClient.GetVpc(context.Background(), cloudConf.VpcIdentity)
+	vpc, err := iaasClient.GetVpc(context.Background(), cloudConf.VpcIdentity)
 	if err != nil {
+		if client.IsNotFound(err) {
+			return nil, fmt.Errorf("vpc %s not found", cloudConf.VpcIdentity)
+		}
 		return nil, fmt.Errorf("failed to test access to thalassa: %v", err)
+	}
+	if vpc == nil {
+		return nil, fmt.Errorf("invalid response from thalassa: vpc %s not found", cloudConf.VpcIdentity)
+	}
+
+	if cloudConf.DefaultSubnet == "" {
+		subnets := vpc.Subnets
+		if len(subnets) == 0 {
+			return nil, fmt.Errorf("no subnets found for vpc %s to discover the default subnet", cloudConf.VpcIdentity)
+		}
+		if len(subnets) > 1 {
+			// find the subnet with the label "kubernetes.io/role/lb"
+			cloudConf.DefaultSubnet, err = discoverDefaultSubnet(subnets)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			cloudConf.DefaultSubnet = subnets[0].Identity
+		}
 	}
 
 	return &Cloud{
@@ -234,4 +257,18 @@ func (c *Cloud) HasClusterID() bool {
 
 func (c *Cloud) GetCloudConfig() CloudConfig {
 	return c.config
+}
+
+func discoverDefaultSubnet(subnets []iaas.Subnet) (string, error) {
+	for _, subnet := range subnets {
+		role, ok := subnet.Labels["kubernetes.io/role/lb"]
+		if !ok {
+			continue
+		}
+		switch strings.ToLower(role) {
+		case "true", "1", "yes":
+			return subnet.Identity, nil
+		}
+	}
+	return "", fmt.Errorf("no subnet found with the label 'kubernetes.io/role/lb'")
 }
