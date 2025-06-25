@@ -152,9 +152,20 @@ func thalassaCloudProviderFactory(config io.Reader) (cloudprovider.Interface, er
 	}
 
 	// test access
-	_, err = iaasClient.GetVpc(context.Background(), cloudConf.VpcIdentity)
+	vpc, err := iaasClient.GetVpc(context.Background(), cloudConf.VpcIdentity)
 	if err != nil {
 		return nil, fmt.Errorf("failed to test access to thalassa: %v", err)
+	}
+
+	if cloudConf.DefaultSubnet == "" {
+		subnets := vpc.Subnets
+		if len(subnets) == 0 {
+			return nil, fmt.Errorf("no subnets found for vpc %s to discover the default subnet", cloudConf.VpcIdentity)
+		}
+		if len(subnets) > 1 {
+			return nil, fmt.Errorf("multiple subnets found for vpc %s to discover the default subnet", cloudConf.VpcIdentity)
+		}
+		cloudConf.DefaultSubnet = subnets[0].Identity
 	}
 
 	return &Cloud{
