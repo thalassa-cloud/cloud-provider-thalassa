@@ -11,6 +11,7 @@ import (
 	"github.com/thalassa-cloud/client-go/iaas"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	clientset "k8s.io/client-go/kubernetes"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
@@ -38,6 +39,11 @@ type loadbalancer struct {
 	vpcIdentity   string
 	defaultSubnet string
 	cluster       string
+
+	endpointSlicesClient clientset.Interface
+	endpointSliceWatcher *EndpointSliceWatcher
+
+	nodeFilter *NodeFilter
 }
 
 // GetLoadBalancer returns the load balancerstatus for the specified service.
@@ -82,6 +88,11 @@ func (lb *loadbalancer) EnsureLoadBalancer(ctx context.Context, clusterName stri
 	vpcLoadbalancer, err := lb.fetchVpcLoadbalancerFromCloud(ctx, clusterName, service)
 	if err != nil {
 		klog.Errorf("Failed to get LoadBalancer service: %v", err)
+		return nil, err
+	}
+
+	nodes, err = lb.nodeFilter.Filter(ctx, service, nodes)
+	if err != nil {
 		return nil, err
 	}
 
