@@ -12,7 +12,9 @@ import (
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	clientset "k8s.io/client-go/kubernetes"
 	cloudprovider "k8s.io/cloud-provider"
+	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
 	versionpkg "github.com/thalassa-cloud/cloud-provider-thalassa/pkg/version"
@@ -36,6 +38,9 @@ type Cloud struct {
 	config CloudConfig
 
 	iaasClient *iaas.Client
+
+	endpointSlicesClient clientset.Interface
+	endpointSliceWatcher *EndpointSliceWatcher
 }
 
 type CloudConfig struct {
@@ -181,14 +186,22 @@ func thalassaCloudProviderFactory(config io.Reader) (cloudprovider.Interface, er
 	}
 
 	return &Cloud{
-		config:     cloudConf,
-		iaasClient: iaasClient,
+		config:               cloudConf,
+		iaasClient:           iaasClient,
+		endpointSlicesClient: nil,
 	}, nil
 }
 
 // Initialize provides the Cloud with a kubernetes client builder and may spawn goroutines
 // to perform housekeeping activities within the Cloud provider.
 func (c *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, stop <-chan struct{}) {
+	client, err := clientBuilder.Client("endpoint-slices")
+	if err != nil {
+		klog.Errorf("failed to get endpoint-slices client: %v", err)
+	}
+
+	c.endpointSlicesClient = client
+	c.endpointSliceWatcher = NewEndpointSliceWatcher(client, stop)
 }
 
 // LoadBalancer returns a balancer interface. Also returns true if the interface is supported, false otherwise.
@@ -205,6 +218,13 @@ func (c *Cloud) LoadBalancer() (cloudprovider.LoadBalancer, bool) {
 		vpcIdentity:   c.config.VpcIdentity,
 		defaultSubnet: c.config.DefaultSubnet,
 		cluster:       c.config.Cluster,
+
+		endpointSlicesClient: c.endpointSlicesClient,
+		endpointSliceWatcher: c.endpointSliceWatcher,
+
+		nodeFilter: &NodeFilter{
+			epSliceLister: c.endpointSliceWatcher.epSliceInformer.Discovery().V1().EndpointSlices().Lister(),
+		},
 	}, true
 }
 
