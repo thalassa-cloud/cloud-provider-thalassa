@@ -10,6 +10,7 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.33.0
 	k8s.io/apimachinery v0.33.0
+	k8s.io/client-go v8.0.0+incompatible
 	k8s.io/cloud-provider v0.0.0-00010101000000-000000000000
 	k8s.io/component-base v0.32.2
 	k8s.io/klog/v2 v2.130.1
@@ -105,7 +106,6 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apiserver v0.32.2 // indirect
-	k8s.io/client-go v8.0.0+incompatible // indirect
 	k8s.io/component-helpers v0.32.2 // indirect
 	k8s.io/controller-manager v0.32.2 // indirect
 	k8s.io/kms v0.32.2 // indirect

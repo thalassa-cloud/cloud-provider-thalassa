@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/thalassa-cloud/client-go/iaas"
 	"github.com/thalassa-cloud/client-go/pkg/client"
@@ -13,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/workqueue"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
@@ -198,10 +200,10 @@ func (c *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, 
 	client, err := clientBuilder.Client("endpoint-slices")
 	if err != nil {
 		klog.Errorf("failed to get endpoint-slices client: %v", err)
+		return
 	}
 
 	c.endpointSlicesClient = client
-	c.endpointSliceWatcher = NewEndpointSliceWatcher(client, stop)
 }
 
 // LoadBalancer returns a balancer interface. Also returns true if the interface is supported, false otherwise.
@@ -209,7 +211,11 @@ func (c *Cloud) LoadBalancer() (cloudprovider.LoadBalancer, bool) {
 	if !c.config.LoadBalancer.Enabled {
 		return nil, false
 	}
-	return &loadbalancer{
+
+	// Create context for the loadbalancer informers
+	ctx, cancel := context.WithCancel(context.Background())
+
+	lb := &loadbalancer{
 		iaasClient: c.iaasClient,
 
 		config:           c.config.LoadBalancer,
@@ -220,12 +226,32 @@ func (c *Cloud) LoadBalancer() (cloudprovider.LoadBalancer, bool) {
 		cluster:       c.config.Cluster,
 
 		endpointSlicesClient: c.endpointSlicesClient,
-		endpointSliceWatcher: c.endpointSliceWatcher,
 
-		nodeFilter: &NodeFilter{
-			epSliceLister: c.endpointSliceWatcher.epSliceInformer.Discovery().V1().EndpointSlices().Lister(),
-		},
-	}, true
+		ctx:    ctx,
+		cancel: cancel,
+	}
+
+	// Initialize the service queue
+	lb.serviceQueue = workqueue.NewTypedRateLimitingQueueWithConfig(
+		workqueue.NewTypedItemExponentialFailureRateLimiter[string](5*time.Second, 30*time.Second),
+		workqueue.TypedRateLimitingQueueConfig[string]{Name: "loadbalancer-service-resync"},
+	)
+
+	// Create a stop channel for the endpoint slice watcher
+	stopCh := make(chan struct{})
+
+	// Create the endpoint slice watcher with the resync callback
+	lb.endpointSliceWatcher = NewEndpointSliceWatcher(c.endpointSlicesClient, stopCh, lb.triggerServiceResync)
+
+	// Set up the node filter with the endpoint slice lister
+	lb.nodeFilter = &NodeFilter{
+		epSliceLister: lb.endpointSliceWatcher.epSliceInformer.Discovery().V1().EndpointSlices().Lister(),
+	}
+
+	// Start the service queue processor
+	lb.startServiceQueueProcessor()
+
+	return lb, true
 }
 
 // Instances returns an instances interface. Also returns true if the interface is supported, false otherwise.

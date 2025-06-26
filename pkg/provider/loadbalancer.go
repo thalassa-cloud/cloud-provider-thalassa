@@ -10,8 +10,10 @@ import (
 	"github.com/thalassa-cloud/client-go/filters"
 	"github.com/thalassa-cloud/client-go/iaas"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/workqueue"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
@@ -44,6 +46,13 @@ type loadbalancer struct {
 	endpointSliceWatcher *EndpointSliceWatcher
 
 	nodeFilter *NodeFilter
+
+	// Queue for handling service resync requests
+	serviceQueue workqueue.TypedRateLimitingInterface[string]
+
+	// Context for managing goroutines
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // GetLoadBalancer returns the load balancerstatus for the specified service.
@@ -168,6 +177,11 @@ func (lb *loadbalancer) UpdateLoadBalancer(ctx context.Context, clusterName stri
 	}
 	if lbService == nil {
 		return fmt.Errorf("LoadBalancer not found in Cloud API for service %s", service.GetName())
+	}
+
+	nodes, err = lb.nodeFilter.Filter(ctx, service, nodes)
+	if err != nil {
+		return err
 	}
 
 	if _, err := lb.updateVpcLoadbalancerListenersAndTargetGroups(ctx, clusterName, service, nodes, lbService); err != nil {
@@ -444,4 +458,115 @@ func (lb *loadbalancer) updateVpcLoadbalancerListenersAndTargetGroups(ctx contex
 		}
 	}
 	return loadbalancerStatus, nil
+}
+
+// triggerServiceResync adds a service to the resync queue
+func (lb *loadbalancer) triggerServiceResync(serviceKey string) {
+	klog.V(4).Infof("Triggering resync for service %s", serviceKey)
+	lb.serviceQueue.Add(serviceKey)
+}
+
+// processServiceQueue processes the service resync queue
+func (lb *loadbalancer) processServiceQueue() {
+	for {
+		select {
+		case <-lb.ctx.Done():
+			return
+		default:
+			serviceKey, shutdown := lb.serviceQueue.Get()
+			if shutdown {
+				return
+			}
+
+			lb.processServiceResync(serviceKey)
+			lb.serviceQueue.Done(serviceKey)
+		}
+	}
+}
+
+// processServiceResync processes a single service resync
+func (lb *loadbalancer) processServiceResync(serviceKey string) {
+	// Parse service key (namespace/name)
+	parts := strings.Split(serviceKey, "/")
+	if len(parts) != 2 {
+		klog.Errorf("Invalid service key format: %s", serviceKey)
+		return
+	}
+
+	namespace, name := parts[0], parts[1]
+
+	// Get the service from the API server
+	svc, err := lb.endpointSlicesClient.CoreV1().Services(namespace).Get(lb.ctx, name, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("Failed to get service %s: %v", serviceKey, err)
+		return
+	}
+
+	// Check if this is a LoadBalancer service
+	if svc.Spec.Type != corev1.ServiceTypeLoadBalancer {
+		klog.V(4).Infof("Service %s is not a LoadBalancer service, skipping resync", serviceKey)
+		return
+	}
+
+	// Get all nodes
+	nodes, err := lb.endpointSlicesClient.CoreV1().Nodes().List(lb.ctx, metav1.ListOptions{})
+	if err != nil {
+		klog.Errorf("Failed to list nodes for service %s: %v", serviceKey, err)
+		return
+	}
+	// filter out nodes that are not ready
+	readyNodes := filterReadyNodes(nodes.Items)
+	// Trigger load balancer update
+	klog.Infof("Processing resync for service %s", serviceKey)
+	if err := lb.UpdateLoadBalancer(lb.ctx, lb.cluster, svc, readyNodes); err != nil {
+		klog.Errorf("Failed to update load balancer for service %s: %v", serviceKey, err)
+		// Re-queue with backoff
+		lb.serviceQueue.AddRateLimited(serviceKey)
+		return
+	}
+
+	klog.Infof("Successfully processed resync for service %s", serviceKey)
+}
+
+func filterReadyNodes(nodes []corev1.Node) []*corev1.Node {
+	readyNodes := make([]*corev1.Node, 0, len(nodes))
+	for _, node := range nodes {
+		if IsNodeReady(&node) {
+			readyNodes = append(readyNodes, &node)
+		}
+	}
+	return readyNodes
+}
+
+func IsNodeReady(node *corev1.Node) bool {
+	if node == nil {
+		return false
+	}
+	if node.Status.Conditions == nil {
+		return false
+	}
+	for _, condition := range node.Status.Conditions {
+		if condition.Type == corev1.NodeReady && condition.Status == corev1.ConditionStatus(corev1.ConditionTrue) {
+			return true
+		}
+	}
+	return false
+}
+
+// startServiceQueueProcessor starts the service queue processor goroutine
+func (lb *loadbalancer) startServiceQueueProcessor() {
+	go lb.processServiceQueue()
+}
+
+// stopServiceQueueProcessor stops the service queue processor
+func (lb *loadbalancer) stopServiceQueueProcessor() {
+	if lb.cancel != nil {
+		lb.cancel()
+	}
+	lb.serviceQueue.ShutDown()
+}
+
+// cleanup performs cleanup when the loadbalancer is no longer needed
+func (lb *loadbalancer) cleanup() {
+	lb.stopServiceQueueProcessor()
 }
