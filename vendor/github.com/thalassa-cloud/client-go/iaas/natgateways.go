@@ -2,7 +2,9 @@ package iaas
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/thalassa-cloud/client-go/filters"
 	"github.com/thalassa-cloud/client-go/pkg/client"
@@ -98,4 +100,84 @@ func (c *Client) DeleteNatGateway(ctx context.Context, identity string) error {
 		return err
 	}
 	return nil
+}
+
+// WaitUntilNatGatewayHasEndpoint waits until the nat gateway has an endpoint.
+// It returns the nat gateway when it has an endpoint or an error if the nat gateway fails to get an endpoint.
+// You are responsible for providing a context that can be cancelled, and for handling the error case.
+// Example: ctxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+// natGateway, err := c.WaitUntilNatGatewayHasEndpoint(ctxt, "nat-gateway-identity1234")
+//
+//	if err != nil {
+//		log.Fatalf("Failed to wait for nat gateway to have an endpoint: %v", err)
+//	}
+//	defer cancel()
+func (c *Client) WaitUntilNatGatewayHasEndpoint(ctx context.Context, identity string) (*VpcNatGateway, error) {
+	natGateway, err := c.GetNatGateway(ctx, identity)
+	if err != nil {
+		return nil, err
+	}
+	if natGateway.EndpointIP != "" {
+		return natGateway, nil
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(DefaultPollIntervalForWaiting):
+			natGateway, err := c.GetNatGateway(ctx, identity)
+			if err != nil {
+				return nil, err
+			}
+			if natGateway.EndpointIP != "" {
+				return natGateway, nil
+			}
+		}
+	}
+}
+
+// WaitUntilNatGatewayDeleted waits until the nat gateway is deleted.
+// It returns an error if the nat gateway fails to delete.
+// You are responsible for providing a context that can be cancelled, and for handling the error case.
+// Example: ctxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+// err := c.WaitUntilNatGatewayDeleted(ctxt, "nat-gateway-identity1234")
+//
+//	if err != nil {
+//		log.Fatalf("Failed to wait for nat gateway to be deleted: %v", err)
+//	}
+//	defer cancel()
+func (c *Client) WaitUntilNatGatewayDeleted(ctx context.Context, identity string) error {
+	natGateway, err := c.GetNatGateway(ctx, identity)
+	if err != nil {
+		if errors.Is(err, client.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	if natGateway.Status == "deleted" {
+		return nil
+	}
+	if natGateway.Status != "deleting" {
+		return fmt.Errorf("nat gateway %s is not being deleted", identity)
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(DefaultPollIntervalForWaiting):
+			natGateway, err := c.GetNatGateway(ctx, identity)
+			if err != nil {
+				if errors.Is(err, client.ErrNotFound) {
+					return nil
+				}
+				return err
+			}
+			if natGateway.Status == "deleted" {
+				return nil
+			}
+			if natGateway.Status != "deleting" {
+				return fmt.Errorf("nat gateway %s is not being deleted", identity)
+			}
+		}
+	}
 }

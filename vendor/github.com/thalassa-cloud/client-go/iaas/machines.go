@@ -2,6 +2,7 @@ package iaas
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -151,6 +152,52 @@ func (c *Client) MachineConsole(ctx context.Context, identity string) (*websocke
 
 	// Get the websocket connection directly from the console endpoint
 	return c.DialWebsocket(ctx, endpoint)
+}
+
+// WaitUntilMachineDeleted waits until the machine is deleted.
+// It returns an error if the machine fails to delete.
+// You are responsible for providing a context that can be cancelled, and for handling the error case.
+// Example: ctxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+// err := c.WaitUntilMachineDeleted(ctxt, "machine-identity1234")
+//
+//	if err != nil {
+//		log.Fatalf("Failed to wait for machine to be deleted: %v", err)
+//	}
+//	defer cancel()
+func (c *Client) WaitUntilMachineDeleted(ctx context.Context, identity string) error {
+	machine, err := c.GetMachine(ctx, identity)
+	if err != nil {
+		if errors.Is(err, client.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	if machine.State == MachineStateDeleted {
+		return nil
+	}
+	if machine.State != MachineStateDeleting {
+		return fmt.Errorf("machine %s is not being deleted", identity)
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(DefaultPollIntervalForWaiting):
+			machine, err := c.GetMachine(ctx, identity)
+			if err != nil {
+				if errors.Is(err, client.ErrNotFound) {
+					return nil
+				}
+				return err
+			}
+			if machine.State == MachineStateDeleted {
+				return nil
+			}
+			if machine.State != MachineStateDeleting {
+				return fmt.Errorf("machine %s is not being deleted", identity)
+			}
+		}
+	}
 }
 
 type ListMachinesRequest struct {
