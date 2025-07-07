@@ -84,7 +84,7 @@ func (c *Client) WaitUntilSubnetDeleted(ctx context.Context, identity string) er
 		return nil
 	}
 	if subnet.Status != SubnetStatusDeleting {
-		return fmt.Errorf("subnet %s is not being deleted", identity)
+		return fmt.Errorf("subnet %s is not being deleted (status: %s)", identity, subnet.Status)
 	}
 	for {
 		select {
@@ -100,7 +100,7 @@ func (c *Client) WaitUntilSubnetDeleted(ctx context.Context, identity string) er
 			}
 			switch subnet.Status {
 			case SubnetStatusFailed:
-				return fmt.Errorf("subnet %s failed to delete", identity)
+				return fmt.Errorf("subnet %s failed to delete (status: %s)", identity, subnet.Status)
 			case SubnetStatusDeleted:
 				return nil
 			}

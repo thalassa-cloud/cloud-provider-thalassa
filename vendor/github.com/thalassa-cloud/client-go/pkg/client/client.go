@@ -29,6 +29,7 @@ var (
 	ErrMissingBasicCredentials = errors.New("basic auth requires username/password")
 	ErrUnsupportedHTTPMethod   = errors.New("unsupported HTTP method")
 	ErrNotFound                = errors.New("not found")
+	ErrBadRequest              = errors.New("bad request")
 )
 
 type AuthenticationType int
@@ -43,6 +44,10 @@ const (
 
 func IsNotFound(err error) bool {
 	return errors.Is(err, ErrNotFound)
+}
+
+func IsBadRequest(err error) bool {
+	return errors.Is(err, ErrBadRequest)
 }
 
 type Client interface {
