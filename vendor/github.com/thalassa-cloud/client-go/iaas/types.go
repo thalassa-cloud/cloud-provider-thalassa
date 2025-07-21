@@ -37,23 +37,42 @@ type VpcFirewallRule struct {
 }
 
 type Vpc struct {
-	Identity      string    `json:"identity"`
-	Name          string    `json:"name"`
-	Slug          string    `json:"slug"`
-	Description   string    `json:"description"`
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
-	ObjectVersion int       `json:"objectVersion"`
-	Status        string    `json:"status"`
+	// Identity is the identity of the VPC.
+	Identity string `json:"identity"`
+	// Name is the name of the VPC.
+	Name string `json:"name"`
+	// Slug is the slug of the VPC.
+	Slug string `json:"slug"`
+	// Description is the description of the VPC.
+	// Identity is the identity of the VPC.
+	// Description is the description of the VPC.
+	Description string `json:"description"`
+	// CreatedAt is the time the VPC was created.
+	CreatedAt time.Time `json:"createdAt"`
+	// UpdatedAt is the time the VPC was last updated.
+	UpdatedAt time.Time `json:"updatedAt"`
+	// ObjectVersion is the version of the VPC.
+	ObjectVersion int `json:"objectVersion"`
+	// Status is the status of the VPC.
+	Status string `json:"status"`
 
-	Labels      Labels      `json:"labels"`
+	// Labels is a list of labels for the VPC.
+	Labels Labels `json:"labels"`
+	// Annotations is a list of annotations for the VPC.
 	Annotations Annotations `json:"annotations"`
-	CIDRs       []string    `json:"cidrs"`
+	// CIDRs is a list of CIDR blocks for the VPC.
+	CIDRs []string `json:"cidrs"`
 
-	Organisation  *base.Organisation `json:"organisation"`
-	CloudRegion   *Region            `json:"cloudRegion"`
-	Subnets       []Subnet           `json:"subnets"`
-	FirewallRules []VpcFirewallRule  `json:"firewallRules"`
+	// Organisation is the organisation that owns the VPC.
+	Organisation *base.Organisation `json:"organisation"`
+	// Region is the region in which the VPC is located.
+	CloudRegion *Region `json:"cloudRegion"`
+	// Subnets is a list of subnets in the VPC.
+	Subnets []Subnet `json:"subnets"`
+	// FirewallRules is a list of firewall rules for the VPC.
+	FirewallRules []VpcFirewallRule `json:"firewallRules"`
+	// RouteTable is the default route table for the VPC.
+	RouteTable *RouteTable `json:"routeTable,omitempty"`
 }
 
 // Subnet
