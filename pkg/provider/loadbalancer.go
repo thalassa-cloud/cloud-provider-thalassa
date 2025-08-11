@@ -521,15 +521,22 @@ func (lb *loadbalancer) updateVpcLoadbalancer(ctx context.Context, service *core
 		currentSecurityGroupIdentities = append(currentSecurityGroupIdentities, securityGroup.Identity)
 	}
 
+	preferredSubnetIdentity := lb.getSubnetIdentityForService(service)
+	if preferredSubnetIdentity == "" {
+		preferredSubnetIdentity = vpcLoadbalancer.Subnet.Identity
+	}
+
 	// check if security groups need to be updated
 	// different identities, or different number of security groups
-	if !reflect.DeepEqual(desiredSecurityGroups, currentSecurityGroupIdentities) || len(desiredSecurityGroups) != len(currentSecurityGroupIdentities) {
+	if !reflect.DeepEqual(desiredSecurityGroups, currentSecurityGroupIdentities) || len(desiredSecurityGroups) != len(currentSecurityGroupIdentities) || vpcLoadbalancer.Subnet.Identity != preferredSubnetIdentity {
 		klog.Infof("loadbalancer %s needs to be updated", vpcLoadbalancer.Identity)
 		if _, err := lb.iaasClient.UpdateLoadbalancer(ctx, vpcLoadbalancer.Identity, iaas.UpdateLoadbalancer{
 			Name:                     vpcLoadbalancer.Name,
 			Description:              vpcLoadbalancer.Description,
 			Labels:                   vpcLoadbalancer.Labels,
 			Annotations:              vpcLoadbalancer.Annotations,
+			Subnet:                   ptr.To(preferredSubnetIdentity),
+			DeleteProtection:         vpcLoadbalancer.DeleteProtection,
 			SecurityGroupAttachments: desiredSecurityGroups,
 		}); err != nil {
 			return fmt.Errorf("failed to update loadbalancer: %v", err)
