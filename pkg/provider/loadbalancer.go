@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -356,6 +357,11 @@ func (lb *loadbalancer) createVpcLoadbalancer(ctx context.Context, lbName string
 	labels := lb.GetLabelsForVpcLoadbalancer(service)
 	annotations := lb.GetAnnotationsForVpcLoadbalancer(service)
 
+	securityGroups := lb.getSecurityGroupsForService(service)
+	if err := lb.verifySecurityGroupsExist(ctx, securityGroups); err != nil {
+		return nil, fmt.Errorf("failed to verify security groups: %v", err)
+	}
+
 	createLB := iaas.CreateLoadbalancer{
 		Name:        lbName,
 		Description: fmt.Sprintf("Loadbalancer for Kubernetes service %s", service.GetName()),
@@ -364,7 +370,7 @@ func (lb *loadbalancer) createVpcLoadbalancer(ctx context.Context, lbName string
 
 		Subnet:                   vpcSubnet.Identity,
 		InternalLoadbalancer:     internalLoadbalancer,
-		SecurityGroupAttachments: []string{},
+		SecurityGroupAttachments: securityGroups,
 	}
 	created, err := lb.iaasClient.CreateLoadbalancer(ctx, createLB)
 	if err != nil {
@@ -373,6 +379,41 @@ func (lb *loadbalancer) createVpcLoadbalancer(ctx context.Context, lbName string
 	}
 
 	return created, nil
+}
+
+// verify security groups exists
+func (lb *loadbalancer) verifySecurityGroupsExist(ctx context.Context, securityGroups []string) error {
+	if len(securityGroups) == 0 { // no security groups to verify
+		return nil
+	}
+
+	// list security groups in VPC
+	securityGroupsInVpc, err := lb.iaasClient.ListSecurityGroups(ctx, &iaas.ListSecurityGroupsRequest{
+		Filters: []filters.Filter{
+			&filters.FilterKeyValue{
+				Key:   "vpc",
+				Value: lb.vpcIdentity,
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list security groups in vpc: %v", err)
+	}
+
+	for _, securityGroup := range securityGroups {
+		found := false
+		for _, securityGroupInVpc := range securityGroupsInVpc {
+			if securityGroupInVpc.Identity == securityGroup {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			return fmt.Errorf("security group %s does not exist in vpc %s", securityGroup, lb.vpcIdentity)
+		}
+	}
+	return nil
 }
 
 func getPortName(lbName string, port corev1.ServicePort) string {
@@ -388,6 +429,13 @@ func (lb *loadbalancer) getLoadBalancerCreatePollInterval() time.Duration {
 
 func (lb *loadbalancer) getLoadBalancerCreatePollTimeout() time.Duration {
 	return convertLoadBalancerCreatePollConfig(lb.config.CreationPollTimeout, defaultLoadBalancerCreatePollTimeout, "timeout")
+}
+
+func (lb *loadbalancer) getSecurityGroupsForService(service *corev1.Service) []string {
+	if val, ok := service.Annotations[LoadBalancerAnnotationSecurityGroups]; ok {
+		return strings.Split(val, ",")
+	}
+	return []string{}
 }
 
 func convertLoadBalancerCreatePollConfig(configValue *int, defaultValue time.Duration, name string) time.Duration {
@@ -441,9 +489,9 @@ func (lb *loadbalancer) updateVpcLoadbalancerListenersAndTargetGroups(ctx contex
 	}
 
 	// update the loadbalancer itself if necessary
-	// if err := lb.updateVpcLoadbalancer(ctx, vpcLoadbalancer); err != nil {
-	// 	return nil, fmt.Errorf("failed to update loadbalancer: %v", err)
-	// }
+	if err := lb.updateVpcLoadbalancer(ctx, service, vpcLoadbalancer); err != nil {
+		return nil, fmt.Errorf("failed to update loadbalancer: %v", err)
+	}
 
 	loadbalancerStatus := &corev1.LoadBalancerStatus{
 		Ingress: []corev1.LoadBalancerIngress{},
@@ -458,6 +506,37 @@ func (lb *loadbalancer) updateVpcLoadbalancerListenersAndTargetGroups(ctx contex
 		}
 	}
 	return loadbalancerStatus, nil
+}
+
+func (lb *loadbalancer) updateVpcLoadbalancer(ctx context.Context, service *corev1.Service, vpcLoadbalancer *iaas.VpcLoadbalancer) error {
+	desiredSecurityGroups := lb.getSecurityGroupsForService(service)
+	if err := lb.verifySecurityGroupsExist(ctx, desiredSecurityGroups); err != nil {
+		return fmt.Errorf("failed to verify security groups: %v", err)
+	}
+
+	// current security groups
+	currentSecurityGroups := vpcLoadbalancer.SecurityGroups
+	currentSecurityGroupIdentities := make([]string, 0, len(currentSecurityGroups))
+	for _, securityGroup := range currentSecurityGroups {
+		currentSecurityGroupIdentities = append(currentSecurityGroupIdentities, securityGroup.Identity)
+	}
+
+	// check if security groups need to be updated
+	// different identities, or different number of security groups
+	if !reflect.DeepEqual(desiredSecurityGroups, currentSecurityGroupIdentities) || len(desiredSecurityGroups) != len(currentSecurityGroupIdentities) {
+		klog.Infof("loadbalancer %s needs to be updated", vpcLoadbalancer.Identity)
+		if _, err := lb.iaasClient.UpdateLoadbalancer(ctx, vpcLoadbalancer.Identity, iaas.UpdateLoadbalancer{
+			Name:                     vpcLoadbalancer.Name,
+			Description:              vpcLoadbalancer.Description,
+			Labels:                   vpcLoadbalancer.Labels,
+			Annotations:              vpcLoadbalancer.Annotations,
+			SecurityGroupAttachments: desiredSecurityGroups,
+		}); err != nil {
+			return fmt.Errorf("failed to update loadbalancer: %v", err)
+		}
+	}
+
+	return nil
 }
 
 // triggerServiceResync adds a service to the resync queue

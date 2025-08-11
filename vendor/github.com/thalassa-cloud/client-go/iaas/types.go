@@ -124,6 +124,9 @@ type VpcNatGateway struct {
 
 	V4IP string `json:"v4IP"`
 	V6IP string `json:"v6IP"`
+
+	// SecurityGroups is a list of security groups that are attached to the NAT Gateway.
+	SecurityGroups []SecurityGroup `json:"securityGroups"`
 }
 
 type VpcLoadbalancer struct {
@@ -149,6 +152,9 @@ type VpcLoadbalancer struct {
 	Hostname            string   `json:"hostname"`
 
 	LoadbalancerListeners []VpcLoadbalancerListener `json:"loadbalancerListeners"`
+
+	// SecurityGroups is a list of security groups that are attached to the Loadbalancer.
+	SecurityGroups []SecurityGroup `json:"securityGroups"`
 }
 
 type Volume struct {
@@ -397,13 +403,18 @@ type CreateVpcNatGateway struct {
 	Labels         Labels      `json:"labels"`
 	Annotations    Annotations `json:"annotations"`
 	SubnetIdentity string      `json:"subnetIdentity"`
+	// SecurityGroupAttachments is a list of security group identities to attach to the NAT Gateway
+	SecurityGroupAttachments []string `json:"securityGroupAttachments"`
+	// ConfigureDefaultRoute is a boolean indicating whether to configure the default route for the NAT Gateway for the route table of the subnet
+	ConfigureDefaultRoute bool `json:"configureDefaultRoute"`
 }
 
 type UpdateVpcNatGateway struct {
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Labels      Labels      `json:"labels"`
-	Annotations Annotations `json:"annotations"`
+	Name                     string      `json:"name"`
+	Description              string      `json:"description"`
+	Labels                   Labels      `json:"labels"`
+	Annotations              Annotations `json:"annotations"`
+	SecurityGroupAttachments []string    `json:"securityGroupAttachments"`
 }
 
 type CreateMachine struct {

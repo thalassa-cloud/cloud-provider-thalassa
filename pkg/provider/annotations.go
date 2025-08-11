@@ -45,6 +45,9 @@ const (
 	// LoadbalancerAnnotationAclAllowedSources is a comma separated list of CIDR ranges that are allowed to access the loadbalancer listener ports. Default no ACL, allow any source
 	// CIDR ranges can be ipv4 or ipv6, but must be compatible with the public network used (i.g. ipv4 CIDR ranges for loadbalancers if the public network is ipv4)
 	LoadbalancerAnnotationAclAllowedSources = "loadbalancer.k8s.thalassa.cloud/acl-allowed-sources"
+
+	// LoadBalancerAnnotationSecurityGroups is a comma separated list of security group IDs to apply to the loadbalancer.
+	LoadBalancerAnnotationSecurityGroups = "loadbalancer.k8s.thalassa.cloud/security-groups"
 )
 
 const (
