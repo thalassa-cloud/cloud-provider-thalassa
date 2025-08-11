@@ -159,7 +159,9 @@ type UpdateLoadbalancer struct {
 	Annotations Annotations `json:"annotations,omitempty"`
 	// DeleteProtection is a flag that indicates whether the loadbalancer should be protected from deletion.
 	DeleteProtection bool `json:"deleteProtection"`
-
+	// Subnet is the subnet in which the loadbalancer will be deployed. Optional. If provided, the loadbalancer will be moved to the new subnet.
+	// Only supported for load balancers that are not internal.
+	Subnet *string `json:"subnet,omitempty"`
 	// SecurityGroupAttachments is a list of security group identities that will be attached to the loadbalancer.
 	SecurityGroupAttachments []string `json:"securityGroupAttachments,omitempty"`
 }

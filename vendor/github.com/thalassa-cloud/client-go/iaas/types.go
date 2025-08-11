@@ -153,6 +153,9 @@ type VpcLoadbalancer struct {
 
 	LoadbalancerListeners []VpcLoadbalancerListener `json:"loadbalancerListeners"`
 
+	// DeleteProtection is a flag that indicates whether the loadbalancer should be protected from deletion.
+	DeleteProtection bool `json:"deleteProtection"`
+
 	// SecurityGroups is a list of security groups that are attached to the Loadbalancer.
 	SecurityGroups []SecurityGroup `json:"securityGroups"`
 }
