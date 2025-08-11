@@ -205,18 +205,18 @@ type ListMachinesRequest struct {
 }
 
 type Machine struct {
-	Identity         string      `json:"identity"`
-	Name             string      `json:"name"`
-	Slug             string      `json:"slug"`
-	CreatedAt        time.Time   `json:"createdAt"`
-	UpdatedAt        *time.Time  `json:"updatedAt,omitempty"`
-	Description      *string     `json:"description,omitempty"`
-	Annotations      Annotations `json:"annotations,omitempty"`
-	Labels           Labels      `json:"labels,omitempty"`
-	State            MachineState
-	CloudInit        *string `json:"cloudInit"`
-	DeleteProtection bool    `json:"deleteProtection"`
-	// SecurityGroups    []SecurityGroup          `json:"securityGroups,omitempty"`
+	Identity          string      `json:"identity"`
+	Name              string      `json:"name"`
+	Slug              string      `json:"slug"`
+	CreatedAt         time.Time   `json:"createdAt"`
+	UpdatedAt         *time.Time  `json:"updatedAt,omitempty"`
+	Description       *string     `json:"description,omitempty"`
+	Annotations       Annotations `json:"annotations,omitempty"`
+	Labels            Labels      `json:"labels,omitempty"`
+	State             MachineState
+	CloudInit         *string                  `json:"cloudInit"`
+	DeleteProtection  bool                     `json:"deleteProtection"`
+	SecurityGroups    []SecurityGroup          `json:"securityGroups,omitempty"`
 	Organisation      *base.Organisation       `json:"organisation,omitempty"`
 	MachineType       *MachineType             `json:"machineType,omitempty"`
 	MachineImage      *MachineImage            `json:"machineImage,omitempty"`
