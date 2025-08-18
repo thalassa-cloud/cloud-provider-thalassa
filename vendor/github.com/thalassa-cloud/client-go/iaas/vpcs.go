@@ -2,7 +2,10 @@ package iaas
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/thalassa-cloud/client-go/filters"
 	"github.com/thalassa-cloud/client-go/pkg/client"
@@ -97,4 +100,73 @@ func (c *Client) DeleteVpc(ctx context.Context, identity string) error {
 		return err
 	}
 	return nil
+}
+
+// WaitUntilVpcIsReady waits until a VPC is ready.
+// The user is expected to provide a timeout context.
+func (c *Client) WaitUntilVpcIsReady(ctx context.Context, vpcIdentity string) error {
+	return c.WaitUntilVpcIsStatus(ctx, vpcIdentity, "ready")
+}
+
+// WaitUntilVpcIsStatus waits until a VPC is in a specific status.
+// The user is expected to provide a timeout context.
+func (c *Client) WaitUntilVpcIsStatus(ctx context.Context, vpcIdentity string, status string) error {
+	vpc, err := c.GetVpc(ctx, vpcIdentity)
+	if err != nil {
+		return err
+	}
+	if strings.EqualFold(vpc.Status, status) {
+		return nil
+	}
+	// wait until the VPC is in the desired status
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(DefaultPollIntervalForWaiting):
+		}
+
+		vpc, err = c.GetVpc(ctx, vpcIdentity)
+		if err != nil {
+			return err
+		}
+		if strings.EqualFold(vpc.Status, status) {
+			return nil
+		}
+	}
+}
+
+// WaitUntilVpcIsDeleted waits until a VPC is deleted.
+// The user is expected to provide a timeout context.
+func (c *Client) WaitUntilVpcIsDeleted(ctx context.Context, vpcIdentity string) error {
+	vpc, err := c.GetVpc(ctx, vpcIdentity)
+	if err != nil {
+		if errors.Is(err, client.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	if strings.EqualFold(vpc.Status, "deleted") {
+		return nil
+	}
+	if !strings.EqualFold(vpc.Status, "deleting") {
+		return fmt.Errorf("VPC %s is not being deleted (status: %s)", vpcIdentity, vpc.Status)
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(DefaultPollIntervalForWaiting):
+			vpc, err := c.GetVpc(ctx, vpcIdentity)
+			if err != nil {
+				if errors.Is(err, client.ErrNotFound) {
+					return nil
+				}
+				return err
+			}
+			if strings.EqualFold(vpc.Status, "deleted") {
+				return nil
+			}
+		}
+	}
 }

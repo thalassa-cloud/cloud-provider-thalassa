@@ -2,7 +2,10 @@ package iaas
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/thalassa-cloud/client-go/filters"
 	"github.com/thalassa-cloud/client-go/pkg/client"
@@ -113,6 +116,75 @@ func (c *Client) DeleteLoadbalancer(ctx context.Context, loadbalancerIdentity st
 		return err
 	}
 	return nil
+}
+
+// WaitUntilLoadbalancerIsReady waits until a loadbalancer is ready.
+// The user is expected to provide a timeout context.
+func (c *Client) WaitUntilLoadbalancerIsReady(ctx context.Context, loadbalancerIdentity string) error {
+	return c.WaitUntilLoadbalancerIsStatus(ctx, loadbalancerIdentity, "ready")
+}
+
+// WaitUntilLoadbalancerIsStatus waits until a loadbalancer is in a specific status.
+// The user is expected to provide a timeout context.
+func (c *Client) WaitUntilLoadbalancerIsStatus(ctx context.Context, loadbalancerIdentity string, status string) error {
+	loadbalancer, err := c.GetLoadbalancer(ctx, loadbalancerIdentity)
+	if err != nil {
+		return err
+	}
+	if strings.EqualFold(loadbalancer.Status, status) {
+		return nil
+	}
+	// wait until the loadbalancer is in the desired status
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(DefaultPollIntervalForWaiting):
+		}
+
+		loadbalancer, err = c.GetLoadbalancer(ctx, loadbalancerIdentity)
+		if err != nil {
+			return err
+		}
+		if strings.EqualFold(loadbalancer.Status, status) {
+			return nil
+		}
+	}
+}
+
+// WaitUntilLoadbalancerIsDeleted waits until a loadbalancer is deleted.
+// The user is expected to provide a timeout context.
+func (c *Client) WaitUntilLoadbalancerIsDeleted(ctx context.Context, loadbalancerIdentity string) error {
+	loadbalancer, err := c.GetLoadbalancer(ctx, loadbalancerIdentity)
+	if err != nil {
+		if errors.Is(err, client.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	if strings.EqualFold(loadbalancer.Status, "deleted") {
+		return nil
+	}
+	if !strings.EqualFold(loadbalancer.Status, "deleting") {
+		return fmt.Errorf("loadbalancer %s is not being deleted (status: %s)", loadbalancerIdentity, loadbalancer.Status)
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(DefaultPollIntervalForWaiting):
+			loadbalancer, err := c.GetLoadbalancer(ctx, loadbalancerIdentity)
+			if err != nil {
+				if errors.Is(err, client.ErrNotFound) {
+					return nil
+				}
+				return err
+			}
+			if strings.EqualFold(loadbalancer.Status, "deleted") {
+				return nil
+			}
+		}
+	}
 }
 
 type ListLoadbalancersRequest struct {

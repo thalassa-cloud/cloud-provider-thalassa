@@ -7,6 +7,23 @@ import (
 
 type Filters []Filter
 
+func (f *Filters) GetFilters() []Filter {
+	return *f
+}
+
+func (f *Filters) GetFilter(key FilterKey) Filter {
+	for _, filter := range *f {
+		if filter.FilterType() == FilterTypeKeyValue && filter.(*FilterKeyValue).Key == key {
+			return filter
+		}
+	}
+	return nil
+}
+
+func (f *Filters) AddFilter(filter Filter) {
+	*f = append(*f, filter)
+}
+
 func (f *Filters) GetLabelFilter() *LabelFilter {
 	for _, filter := range *f {
 		if labelFilter, ok := filter.(*LabelFilter); ok {

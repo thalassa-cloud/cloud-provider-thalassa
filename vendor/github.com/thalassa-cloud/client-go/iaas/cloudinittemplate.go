@@ -67,6 +67,20 @@ func (c *Client) GetCloudInitTemplate(ctx context.Context, identity string) (*Cl
 	return &cloudInitTemplate, nil
 }
 
+// UpdateCloudInitTemplate updates an existing cloud-init template with the provided configuration.
+func (c *Client) UpdateCloudInitTemplate(ctx context.Context, identity string, update UpdateCloudInitTemplateRequest) (*CloudInitTemplate, error) {
+	var cloudInitTemplate CloudInitTemplate
+	req := c.R().SetBody(update).SetResult(&cloudInitTemplate)
+	resp, err := c.Do(ctx, req, client.PUT, fmt.Sprintf("%s/%s", CloudInitTemplateEndpoint, identity))
+	if err != nil {
+		return nil, err
+	}
+	if err := c.Check(resp); err != nil {
+		return nil, err
+	}
+	return &cloudInitTemplate, nil
+}
+
 // DeleteCloudInitTemplate permanently removes a cloud-init template from the system.
 // This operation cannot be undone and will affect any instances using this template.
 func (c *Client) DeleteCloudInitTemplate(ctx context.Context, identity string) error {
@@ -126,9 +140,28 @@ type CreateCloudInitTemplateRequest struct {
 
 	// Labels are optional key-value pairs for organizing templates
 	// Useful for filtering and grouping related templates
-	Labels map[string]string `json:"labels"`
+	Labels Labels `json:"labels"`
 
 	// Annotations are optional metadata that don't affect template behavior
 	// Can include descriptions, usage notes, or other contextual information
-	Annotations map[string]string `json:"annotations"`
+	Annotations Annotations `json:"annotations"`
+}
+
+type UpdateCloudInitTemplateRequest struct {
+	// Name is the display name for the template (required)
+	// Should be descriptive and unique within your organization
+	Name string `json:"name"`
+
+	// Labels are optional key-value pairs for organizing templates
+	// Useful for filtering and grouping related templates
+	Labels Labels `json:"labels"`
+
+	// Annotations are optional metadata that don't affect template behavior
+	// Can include descriptions, usage notes, or other contextual information
+	Annotations Annotations `json:"annotations"`
+
+	// Content is the cloud-init script content (required)
+	// Can include shell scripts, YAML configurations, or other cloud-init directives
+	// Example: "#cloud-config\npackages:\n  - nginx\n  - git"
+	Content string `json:"content"`
 }
