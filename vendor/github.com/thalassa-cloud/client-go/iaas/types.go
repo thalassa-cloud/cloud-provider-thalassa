@@ -183,6 +183,12 @@ type Volume struct {
 	AvailabilityZones []Zone `json:"availabilityZones,omitempty"`
 	Size              int    `json:"size"`
 	DeleteProtection  bool   `json:"deleteProtection"`
+
+	// RestoreFromSnapshot is the snapshot that was used to restore the volume.
+	// Only set if the volume was restored from a snapshot.
+	RestoreFromSnapshot *Snapshot `json:"restoreFromSnapshot,omitempty"`
+	// Snapshots is a list of snapshots that have been created from this volume.
+	Snapshots []Snapshot `json:"snapshots,omitempty"`
 }
 
 type VolumeType struct {
@@ -322,6 +328,10 @@ type CreateVolume struct {
 	CloudRegionIdentity string      `json:"cloudRegionIdentity"`
 	VolumeTypeIdentity  string      `json:"volumeTypeIdentity"`
 	DeleteProtection    bool        `json:"deleteProtection"`
+
+	// RestoreFromSnapshotId is the identity of the snapshot to restore the volume from. The region of the snapshot and the requested region for volume creation must be equal.
+	// Leaving this empty will create a new volume.
+	RestoreFromSnapshotId *string `json:"restoreFromSnapshotId,omitempty"`
 }
 
 type UpdateVolume struct {
