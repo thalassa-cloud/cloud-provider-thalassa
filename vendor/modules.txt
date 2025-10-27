@@ -224,7 +224,7 @@ github.com/stoewer/go-strcase
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/assert/yaml
 github.com/stretchr/testify/require
-# github.com/thalassa-cloud/client-go v0.22.0
+# github.com/thalassa-cloud/client-go v0.23.0
 ## explicit; go 1.24.0
 github.com/thalassa-cloud/client-go/filters
 github.com/thalassa-cloud/client-go/iaas
@@ -359,7 +359,7 @@ golang.org/x/net/proxy
 golang.org/x/net/publicsuffix
 golang.org/x/net/trace
 golang.org/x/net/websocket
-# golang.org/x/oauth2 v0.31.0
+# golang.org/x/oauth2 v0.32.0
 ## explicit; go 1.24.0
 golang.org/x/oauth2
 golang.org/x/oauth2/clientcredentials
@@ -395,7 +395,7 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
-# golang.org/x/time v0.13.0
+# golang.org/x/time v0.14.0
 ## explicit; go 1.24.0
 golang.org/x/time/rate
 # google.golang.org/genproto/googleapis/api v0.0.0-20240826202546-f6391c0de4c7
