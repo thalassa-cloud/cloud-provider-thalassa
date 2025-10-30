@@ -46,6 +46,13 @@ const (
 	// CIDR ranges can be ipv4 or ipv6, but must be compatible with the public network used (i.g. ipv4 CIDR ranges for loadbalancers if the public network is ipv4)
 	LoadbalancerAnnotationAclAllowedSources = "loadbalancer.k8s.thalassa.cloud/acl-allowed-sources"
 
+	// LoadbalancerAnnotationAclAllowedSourcesPort is a per-port ACL configuration annotation.
+	// Format: loadbalancer.k8s.thalassa.cloud/acl-port-{port-name-or-number}
+	// Example: loadbalancer.k8s.thalassa.cloud/acl-port-http or loadbalancer.k8s.thalassa.cloud/acl-port-80
+	// Value: comma separated list of CIDR ranges (same format as global acl-allowed-sources)
+	// When both global and per-port ACLs are configured, they are combined
+	LoadbalancerAnnotationAclAllowedSourcesPort = "loadbalancer.k8s.thalassa.cloud/acl-port"
+
 	// LoadBalancerAnnotationSecurityGroups is a comma separated list of security group IDs to apply to the loadbalancer.
 	LoadBalancerAnnotationSecurityGroups = "loadbalancer.k8s.thalassa.cloud/security-groups"
 )
