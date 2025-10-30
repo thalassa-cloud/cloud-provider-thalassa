@@ -114,17 +114,10 @@ func (lb *loadbalancer) updateVpcLoadbalancerListener(ctx context.Context, servi
 }
 
 func (lb *loadbalancer) desiredVpcLoadbalancerListener(service *corev1.Service) []iaas.VpcLoadbalancerListener {
-	aclAllowedSources := []string{}
+	// Get global ACL allowed sources
+	globalAclAllowedSources := []string{}
 	if val, ok := service.Annotations[LoadbalancerAnnotationAclAllowedSources]; ok {
-		sources := strings.Split(val, ",")
-		// validate that each entry is an IP or CIDR
-		for _, source := range sources {
-			if _, _, err := net.ParseCIDR(source); err != nil {
-				klog.Errorf("invalid CIDR in acl-allowed-sources annotation: %v", err)
-				continue
-			}
-			aclAllowedSources = append(aclAllowedSources, source)
-		}
+		globalAclAllowedSources = lb.parseAclSources(val)
 	}
 
 	connectionTimeout, err := getIntAnnotation(service, LoadbalancerAnnotationIdleConnectionTimeout, DefaultIdleConnectionTimeout)
@@ -138,6 +131,12 @@ func (lb *loadbalancer) desiredVpcLoadbalancerListener(service *corev1.Service) 
 
 	listener := make([]iaas.VpcLoadbalancerListener, len(service.Spec.Ports))
 	for i, port := range service.Spec.Ports {
+		// Get per-port ACL allowed sources
+		perPortAclAllowedSources := lb.getPerPortAclAllowedSources(service, port)
+
+		// Combine global and per-port ACL sources (union)
+		combinedAclAllowedSources := lb.removeDuplicateStrings(append(globalAclAllowedSources, perPortAclAllowedSources...))
+
 		listener[i].Name = getPortName(lb.GetLoadBalancerName(context.Background(), lb.cluster, service), port)
 		listener[i].Description = fmt.Sprintf("Listener for Kubernetes service %s", service.GetName())
 		listener[i].Protocol = iaas.LoadbalancerProtocol(strings.ToLower(string(port.Protocol)))
@@ -148,9 +147,74 @@ func (lb *loadbalancer) desiredVpcLoadbalancerListener(service *corev1.Service) 
 		}
 		listener[i].Labels = lb.GetLabelsForVpcLoadbalancerTargetGroup(service, int(port.Port), string(port.Protocol))
 		listener[i].Annotations = lb.GetAnnotationsForVpcLoadbalancer(service)
-		listener[i].AllowedSources = aclAllowedSources
+		listener[i].AllowedSources = combinedAclAllowedSources
 		listener[i].ConnectionIdleTimeout = ptr.To(uint32(connectionTimeout))
 		listener[i].MaxConnections = ptr.To(uint32(maxConnections))
 	}
 	return listener
+}
+
+// getPerPortAclAllowedSources returns the allowed sources for a specific port by checking both port name and port number annotations
+func (lb *loadbalancer) getPerPortAclAllowedSources(service *corev1.Service, port corev1.ServicePort) []string {
+	var allowedSources []string
+
+	// Check for port name annotation first (e.g., loadbalancer.k8s.thalassa.cloud/acl-port-http)
+	if port.Name != "" {
+		portNameAnnotation := fmt.Sprintf("%s-%s", LoadbalancerAnnotationAclAllowedSourcesPort, port.Name)
+		if val, ok := service.Annotations[portNameAnnotation]; ok {
+			sources := lb.parseAclSources(val)
+			allowedSources = append(allowedSources, sources...)
+		}
+	}
+
+	// Check for port number annotation (e.g., loadbalancer.k8s.thalassa.cloud/acl-port-80)
+	portNumberAnnotation := fmt.Sprintf("%s-%d", LoadbalancerAnnotationAclAllowedSourcesPort, port.Port)
+	if val, ok := service.Annotations[portNumberAnnotation]; ok {
+		sources := lb.parseAclSources(val)
+		allowedSources = append(allowedSources, sources...)
+	}
+
+	// Remove duplicates while preserving order
+	result := lb.removeDuplicateStrings(allowedSources)
+	if result == nil {
+		return []string{}
+	}
+	return result
+}
+
+// parseAclSources parses a comma-separated string of CIDR ranges and validates each one
+func (lb *loadbalancer) parseAclSources(sourcesStr string) []string {
+	validSources := make([]string, 0)
+	sources := strings.Split(sourcesStr, ",")
+
+	for _, source := range sources {
+		source = strings.TrimSpace(source)
+		if source == "" {
+			continue
+		}
+
+		// Validate that each entry is an IP or CIDR
+		if _, _, err := net.ParseCIDR(source); err != nil {
+			klog.Errorf("invalid CIDR in acl-allowed-sources annotation: %v", err)
+			continue
+		}
+		validSources = append(validSources, source)
+	}
+
+	return validSources
+}
+
+// removeDuplicateStrings removes duplicate strings from a slice while preserving order
+func (lb *loadbalancer) removeDuplicateStrings(input []string) []string {
+	keys := make(map[string]bool)
+	var result []string
+
+	for _, item := range input {
+		if !keys[item] {
+			keys[item] = true
+			result = append(result, item)
+		}
+	}
+
+	return result
 }
