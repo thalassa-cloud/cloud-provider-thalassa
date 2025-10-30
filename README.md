@@ -8,11 +8,11 @@ The Cloud Controller Manager integrates Kubernetes with Thalassa Cloud's infrast
 
 ## Features
 
-- **Load Balancer Integration**: Automatically provisions and manages load balancers for Kubernetes services
-- **Node Lifecycle Management**: Monitors node health and handles node lifecycle events
-- **Instance Metadata**: Provides cloud-specific metadata for nodes
-- **Zone and Region Support**: Supports availability zones and regions for proper node placement
-- **Configurable Authentication**: Supports both Personal Access Token and OIDC authentication methods
+- Load balancers for Services of type `LoadBalancer` are created and kept in sync
+- Per-port access control lists (ACLs) via annotations; global and per-port ACLs can be combined
+- Optional managed security group per Service (created, updated and cleaned up automatically)
+- Node metadata and lifecycle integration
+- Zone and region labels for nodes
 
 ## Configuration
 
