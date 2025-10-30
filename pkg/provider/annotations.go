@@ -55,6 +55,12 @@ const (
 
 	// LoadBalancerAnnotationSecurityGroups is a comma separated list of security group IDs to apply to the loadbalancer.
 	LoadBalancerAnnotationSecurityGroups = "loadbalancer.k8s.thalassa.cloud/security-groups"
+
+	// LoadBalancerAnnotationCreateSecurityGroup is a boolean that indicates if a security group should be created for the loadbalancer. Default is false.
+	// If true, a security group will be created for the loadbalancer with the name of the loadbalancer.
+	// The security group will be created with the same rules as the loadbalancer.
+	// The security group will be deleted when the loadbalancer is deleted.
+	LoadBalancerAnnotationCreateSecurityGroup = "loadbalancer.k8s.thalassa.cloud/create-security-group"
 )
 
 const (

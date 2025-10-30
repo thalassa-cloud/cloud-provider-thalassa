@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"net"
+
 	"github.com/thalassa-cloud/client-go/filters"
 	"github.com/thalassa-cloud/client-go/iaas"
 	corev1 "k8s.io/api/core/v1"
@@ -253,6 +255,8 @@ func (lb *loadbalancer) EnsureLoadBalancerDeleted(ctx context.Context, clusterNa
 			}
 		}
 
+		// delete managed security group if it exists
+		lb.deleteManagedSecurityGroup(ctx, service)
 	}
 	return nil
 }
@@ -360,6 +364,18 @@ func (lb *loadbalancer) createVpcLoadbalancer(ctx context.Context, lbName string
 	securityGroups := lb.getSecurityGroupsForService(service)
 	if err := lb.verifySecurityGroupsExist(ctx, securityGroups); err != nil {
 		return nil, fmt.Errorf("failed to verify security groups: %v", err)
+	}
+
+	// Optionally create and attach a managed security group
+	if lb.shouldCreateSecurityGroup(service) {
+		sg, err := lb.ensureManagedSecurityGroup(ctx, service, lb.desiredVpcLoadbalancerListener(service))
+		if err != nil {
+			klog.Errorf("failed to ensure managed security group: %v", err)
+			return nil, err
+		}
+		if sg != nil {
+			securityGroups = append(securityGroups, sg.Identity)
+		}
 	}
 
 	createLB := iaas.CreateLoadbalancer{
@@ -489,7 +505,7 @@ func (lb *loadbalancer) updateVpcLoadbalancerListenersAndTargetGroups(ctx contex
 	}
 
 	// update the loadbalancer itself if necessary
-	if err := lb.updateVpcLoadbalancer(ctx, service, vpcLoadbalancer); err != nil {
+	if err := lb.updateVpcLoadbalancer(ctx, service, vpcLoadbalancer, desiredListeners); err != nil {
 		return nil, fmt.Errorf("failed to update loadbalancer: %v", err)
 	}
 
@@ -508,7 +524,7 @@ func (lb *loadbalancer) updateVpcLoadbalancerListenersAndTargetGroups(ctx contex
 	return loadbalancerStatus, nil
 }
 
-func (lb *loadbalancer) updateVpcLoadbalancer(ctx context.Context, service *corev1.Service, vpcLoadbalancer *iaas.VpcLoadbalancer) error {
+func (lb *loadbalancer) updateVpcLoadbalancer(ctx context.Context, service *corev1.Service, vpcLoadbalancer *iaas.VpcLoadbalancer, desiredListeners []iaas.VpcLoadbalancerListener) error {
 	desiredSecurityGroups := lb.getSecurityGroupsForService(service)
 	if err := lb.verifySecurityGroupsExist(ctx, desiredSecurityGroups); err != nil {
 		return fmt.Errorf("failed to verify security groups: %v", err)
@@ -519,6 +535,21 @@ func (lb *loadbalancer) updateVpcLoadbalancer(ctx context.Context, service *core
 	currentSecurityGroupIdentities := make([]string, 0, len(currentSecurityGroups))
 	for _, securityGroup := range currentSecurityGroups {
 		currentSecurityGroupIdentities = append(currentSecurityGroupIdentities, securityGroup.Identity)
+	}
+
+	// Reconcile managed security group if requested
+	if lb.shouldCreateSecurityGroup(service) {
+		sg, err := lb.ensureManagedSecurityGroup(ctx, service, desiredListeners)
+		if err != nil {
+			klog.Errorf("failed to ensure managed security group: %v", err)
+			return fmt.Errorf("failed to ensure managed security group: %v", err)
+		}
+		if sg != nil {
+			desiredSecurityGroups = append(desiredSecurityGroups, sg.Identity)
+		}
+		// } else {
+		// 	// delete any managed security groups
+		// 	lb.deleteManagedSecurityGroup(ctx, service)
 	}
 
 	preferredSubnetIdentity := lb.getSubnetIdentityForService(service)
@@ -655,4 +686,159 @@ func (lb *loadbalancer) stopServiceQueueProcessor() {
 // cleanup performs cleanup when the loadbalancer is no longer needed
 func (lb *loadbalancer) cleanup() {
 	lb.stopServiceQueueProcessor()
+}
+
+// shouldCreateSecurityGroup returns true if the service requests a managed SG
+func (lb *loadbalancer) shouldCreateSecurityGroup(service *corev1.Service) bool {
+	if val, ok := service.Annotations[LoadBalancerAnnotationCreateSecurityGroup]; ok {
+		b, _ := strconv.ParseBool(val)
+		return b
+	}
+	return false
+}
+
+// ensureManagedSecurityGroup creates or updates a managed security group based on desired listeners and attaches it
+func (lb *loadbalancer) ensureManagedSecurityGroup(ctx context.Context, service *corev1.Service, desiredListeners []iaas.VpcLoadbalancerListener) (*iaas.SecurityGroup, error) {
+	// find existing SG by labels
+	sg, err := lb.findManagedSecurityGroup(ctx, service)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find managed security group: %v", err)
+	}
+
+	labels := lb.GetLabelsForVpcLoadbalancer(service)
+	annotations := lb.GetAnnotationsForVpcLoadbalancer(service)
+
+	ingress := lb.buildIngressRulesFromListeners(desiredListeners)
+	egress := []iaas.SecurityGroupRule{
+		// allow all outbound traffic
+		{
+			Name:          "allow-all-outbound",
+			IPVersion:     iaas.SecurityGroupIPVersionIPv4,
+			Protocol:      iaas.SecurityGroupRuleProtocolAll,
+			Priority:      100,
+			RemoteType:    iaas.SecurityGroupRuleRemoteTypeAddress,
+			RemoteAddress: ptr.To("0.0.0.0/0"),
+		},
+		{
+			Name:          "allow-all-outbound",
+			IPVersion:     iaas.SecurityGroupIPVersionIPv6,
+			Protocol:      iaas.SecurityGroupRuleProtocolAll,
+			Priority:      110,
+			RemoteType:    iaas.SecurityGroupRuleRemoteTypeAddress,
+			RemoteAddress: ptr.To("::/0"),
+		},
+	}
+
+	if sg == nil {
+		// create
+		name := lb.generateSecurityGroupName(service.GetName())
+		create := iaas.CreateSecurityGroupRequest{
+			Name:                  name,
+			Description:           fmt.Sprintf("Security group for Kubernetes service %s", service.GetName()),
+			Labels:                labels,
+			Annotations:           annotations,
+			VpcIdentity:           lb.vpcIdentity,
+			AllowSameGroupTraffic: true,
+			IngressRules:          ingress,
+			EgressRules:           egress,
+		}
+		created, err := lb.iaasClient.CreateSecurityGroup(ctx, create)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create managed security group: %v", err)
+		}
+		return created, nil
+	}
+
+	// update rules if differ
+	update := iaas.UpdateSecurityGroupRequest{
+		Name:                  sg.Name,
+		Description:           sg.Description,
+		Labels:                labels,
+		Annotations:           annotations,
+		ObjectVersion:         sg.ObjectVersion,
+		AllowSameGroupTraffic: true,
+		IngressRules:          ingress,
+		EgressRules:           egress,
+	}
+	updated, err := lb.iaasClient.UpdateSecurityGroup(ctx, sg.Identity, update)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update managed security group: %v", err)
+	}
+	return updated, nil
+}
+
+// findManagedSecurityGroup locates the SG for this service via labels
+func (lb *loadbalancer) findManagedSecurityGroup(ctx context.Context, service *corev1.Service) (*iaas.SecurityGroup, error) {
+	labels := lb.GetLabelsForVpcLoadbalancer(service)
+
+	securityGroupsInVpc, err := lb.iaasClient.ListSecurityGroups(ctx, &iaas.ListSecurityGroupsRequest{
+		Filters: []filters.Filter{
+			&filters.FilterKeyValue{Key: "vpc", Value: lb.vpcIdentity},
+			&filters.LabelFilter{
+				MatchLabels: labels,
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list security groups in vpc: %v", err)
+	}
+	for _, sg := range securityGroupsInVpc {
+		if matchLabels(labels, sg.Labels) {
+			return &sg, nil
+		}
+	}
+	return nil, nil
+}
+
+// buildIngressRulesFromListeners creates SG ingress rules for each listener and source
+func (lb *loadbalancer) buildIngressRulesFromListeners(listeners []iaas.VpcLoadbalancerListener) []iaas.SecurityGroupRule {
+	rules := make([]iaas.SecurityGroupRule, 0)
+	priority := int32(100)
+	for _, l := range listeners {
+		for _, src := range l.AllowedSources {
+			ipVer := iaas.SecurityGroupIPVersionIPv4
+			if _, ipnet, err := net.ParseCIDR(src); err == nil {
+				if ip := ipnet.IP; ip != nil && ip.To4() == nil {
+					ipVer = iaas.SecurityGroupIPVersionIPv6
+				}
+			}
+			proto := iaas.SecurityGroupRuleProtocolTCP
+			if strings.ToLower(string(l.Protocol)) == "udp" {
+				proto = iaas.SecurityGroupRuleProtocolUDP
+			}
+			rules = append(rules, iaas.SecurityGroupRule{
+				Name:          fmt.Sprintf("%s-%d", strings.ToLower(string(l.Protocol)), l.Port),
+				IPVersion:     ipVer,
+				Protocol:      proto,
+				Priority:      priority,
+				RemoteType:    iaas.SecurityGroupRuleRemoteTypeAddress,
+				RemoteAddress: ptr.To(src),
+				PortRangeMin:  int32(l.Port),
+				PortRangeMax:  int32(l.Port),
+				Policy:        iaas.SecurityGroupRulePolicyAllow,
+			})
+		}
+	}
+	return rules
+}
+
+// generateSecurityGroupName returns a short name within API constraints
+func (lb *loadbalancer) generateSecurityGroupName(lbName string) string {
+	// Ensure <=16 chars; prefix sg-
+	base := "sg-" + lbName
+	if len(base) > 16 {
+		return base[:16]
+	}
+	return base
+}
+
+// deleteManagedSecurityGroup removes the managed SG if present
+func (lb *loadbalancer) deleteManagedSecurityGroup(ctx context.Context, service *corev1.Service) {
+	sg, err := lb.findManagedSecurityGroup(ctx, service)
+	if err != nil || sg == nil {
+		return
+	}
+	if err := lb.iaasClient.DeleteSecurityGroup(ctx, sg.Identity); err != nil {
+		klog.Errorf("failed to delete managed security group %s: %v", sg.Identity, err)
+	}
 }
