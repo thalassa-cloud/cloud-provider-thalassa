@@ -224,7 +224,7 @@ github.com/stoewer/go-strcase
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/assert/yaml
 github.com/stretchr/testify/require
-# github.com/thalassa-cloud/client-go v0.23.0
+# github.com/thalassa-cloud/client-go v0.24.0
 ## explicit; go 1.24.0
 github.com/thalassa-cloud/client-go/filters
 github.com/thalassa-cloud/client-go/iaas
