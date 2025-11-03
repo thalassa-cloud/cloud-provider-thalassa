@@ -158,8 +158,8 @@ github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO
 github.com/stretchr/testify v1.8.1/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
-github.com/thalassa-cloud/client-go v0.23.0 h1:RHnbC0H5G2KOcME/zhV7Yet2NxyFsly1w6ccrrFx0ck=
-github.com/thalassa-cloud/client-go v0.23.0/go.mod h1:FXOcCo5/Kv8wVCXgwyfbj3An4VeK9Y21NIISQiGT2hA=
+github.com/thalassa-cloud/client-go v0.24.0 h1:Q/cRh+3gi4uiZPU6kggmHPksDnpcSbO62S9G/t2RzY0=
+github.com/thalassa-cloud/client-go v0.24.0/go.mod h1:FXOcCo5/Kv8wVCXgwyfbj3An4VeK9Y21NIISQiGT2hA=
 github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 h1:6fotK7otjonDflCTK0BCfls4SPy3NcCVb5dqqmbRknE=
 github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75/go.mod h1:KO6IkyS8Y3j8OdNO85qEYBsRPuteD+YciPomcXdrMnk=
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=

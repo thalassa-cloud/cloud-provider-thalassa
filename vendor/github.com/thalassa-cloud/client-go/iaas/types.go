@@ -33,9 +33,6 @@ type Zone struct {
 	CloudRegion         *Region     `json:"CloudRegion"`
 }
 
-type VpcFirewallRule struct {
-}
-
 type Vpc struct {
 	// Identity is the identity of the VPC.
 	Identity string `json:"identity"`
@@ -256,17 +253,19 @@ type RouteTable struct {
 }
 
 type RouteEntry struct {
-	Identity                 string              `json:"identity"`
-	Note                     *string             `json:"note,omitempty"`
-	RouteTable               *RouteTable         `json:"routeTable,omitempty"`
-	DestinationCidrBlock     string              `json:"destinationCidrBlock"`
-	TargetGatewayIdentity    *string             `json:"targetGatewayIdentity,omitempty"`
-	TargetGateway            *VpcGatewayEndpoint `json:"targetGateway,omitempty"`
-	TargetNatGatewayIdentity *string             `json:"targetNatGatewayIdentity,omitempty"`
-	TargetNatGateway         *VpcNatGateway      `json:"targetNatGateway,omitempty"`
-	GatewayAddress           *string             `json:"gatewayAddress,omitempty"`
-	TargetGatewayEndpoint    *VpcGatewayEndpoint `json:"targetGatewayEndpoint,omitempty"`
-	Type                     string              `json:"type"`
+	Identity                     string                `json:"identity"`
+	Note                         *string               `json:"note,omitempty"`
+	RouteTable                   *RouteTable           `json:"routeTable,omitempty"`
+	DestinationCidrBlock         string                `json:"destinationCidrBlock"`
+	TargetGatewayIdentity        *string               `json:"targetGatewayIdentity,omitempty"`
+	TargetGateway                *VpcGatewayEndpoint   `json:"targetGateway,omitempty"`
+	TargetNatGatewayIdentity     *string               `json:"targetNatGatewayIdentity,omitempty"`
+	TargetNatGateway             *VpcNatGateway        `json:"targetNatGateway,omitempty"`
+	GatewayAddress               *string               `json:"gatewayAddress,omitempty"`
+	TargetGatewayEndpoint        *VpcGatewayEndpoint   `json:"targetGatewayEndpoint,omitempty"`
+	TargetVpcPeeringConnectionId *string               `json:"targetVpcPeeringConnectionId,omitempty"`
+	TargetVpcPeeringConnection   *VpcPeeringConnection `json:"targetVpcPeeringConnection,omitempty"`
+	Type                         string                `json:"type"`
 }
 
 type ResourceStatus struct {
@@ -382,17 +381,19 @@ type UpdateRouteTableRoutes struct {
 }
 
 type CreateRouteTableRoute struct {
-	DestinationCidrBlock     string `json:"destinationCidrBlock"`
-	TargetGatewayIdentity    string `json:"targetGatewayIdentity,omitempty"`
-	TargetNatGatewayIdentity string `json:"targetNatGatewayIdentity,omitempty"`
-	GatewayAddress           string `json:"gatewayAddress,omitempty"`
+	DestinationCidrBlock         string  `json:"destinationCidrBlock"`
+	TargetGatewayIdentity        string  `json:"targetGatewayIdentity,omitempty"`
+	TargetNatGatewayIdentity     string  `json:"targetNatGatewayIdentity,omitempty"`
+	TargetVpcPeeringConnectionId *string `json:"targetVpcPeeringConnectionId,omitempty"`
+	GatewayAddress               string  `json:"gatewayAddress,omitempty"`
 }
 
 type UpdateRouteTableRoute struct {
-	DestinationCidrBlock     string `json:"destinationCidrBlock"`
-	TargetGatewayIdentity    string `json:"targetGatewayIdentity,omitempty"`
-	TargetNatGatewayIdentity string `json:"targetNatGatewayIdentity,omitempty"`
-	GatewayAddress           string `json:"gatewayAddress,omitempty"`
+	DestinationCidrBlock         string  `json:"destinationCidrBlock"`
+	TargetGatewayIdentity        string  `json:"targetGatewayIdentity,omitempty"`
+	TargetNatGatewayIdentity     string  `json:"targetNatGatewayIdentity,omitempty"`
+	TargetVpcPeeringConnectionId *string `json:"targetVpcPeeringConnectionId,omitempty"`
+	GatewayAddress               string  `json:"gatewayAddress,omitempty"`
 }
 
 type CreateRouteTable struct {
