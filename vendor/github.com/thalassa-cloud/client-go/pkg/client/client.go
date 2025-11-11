@@ -26,6 +26,7 @@ var (
 	ErrMissingBaseURL          = errors.New("missing base URL; use WithBaseURL(...)")
 	ErrMissingOIDCConfig       = errors.New("OIDC configuration is missing")
 	ErrEmptyPersonalToken      = errors.New("personal access token cannot be empty")
+	ErrMissingToken            = errors.New("token cannot be empty")
 	ErrMissingBasicCredentials = errors.New("basic auth requires username/password")
 	ErrUnsupportedHTTPMethod   = errors.New("unsupported HTTP method")
 	ErrNotFound                = errors.New("not found")
@@ -37,6 +38,7 @@ type AuthenticationType int
 const (
 	AuthNone AuthenticationType = iota
 	AuthOIDC
+	AuthToken
 	AuthPersonalAccessToken
 	AuthBasic
 	AuthCustom

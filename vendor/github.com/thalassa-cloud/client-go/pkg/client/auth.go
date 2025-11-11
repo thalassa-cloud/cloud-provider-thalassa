@@ -34,6 +34,14 @@ func withAuthOIDC(clientID, clientSecret, tokenURL string, insecure bool, scopes
 	}
 }
 
+func WithToken(token string) Option {
+	return func(c *thalassaCloudClient) error {
+		c.authType = AuthToken
+		c.oidcToken = &oauth2.Token{AccessToken: token}
+		return nil
+	}
+}
+
 func WithAuthPersonalToken(token string) Option {
 	return func(c *thalassaCloudClient) error {
 		c.authType = AuthPersonalAccessToken
@@ -60,6 +68,17 @@ func WithAuthNone() Option {
 
 func (c *thalassaCloudClient) configureAuth() error {
 	switch c.authType {
+	case AuthToken:
+		if c.oidcToken == nil {
+			return ErrMissingToken
+		}
+		c.resty.OnBeforeRequest(func(_ *resty.Client, req *resty.Request) error {
+			if c.oidcToken == nil || !c.oidcToken.Valid() {
+				return fmt.Errorf("token is not valid")
+			}
+			req.SetAuthToken(c.oidcToken.AccessToken)
+			return nil
+		})
 	case AuthOIDC:
 		if c.oidcConfig == nil {
 			return ErrMissingOIDCConfig
