@@ -50,6 +50,8 @@ type UpdateSecurityGroupRequest struct {
 	IngressRules []SecurityGroupRule `json:"ingressRules"`
 	// EgressRules are the egress rules of the security group
 	EgressRules []SecurityGroupRule `json:"egressRules"`
+	// SkipRulesUpdate is a flag that indicates if the security group rules update should be skipped
+	SkipRulesUpdate bool `json:"skipRulesUpdate,omitempty"`
 }
 
 type SecurityGroupStatus string
@@ -145,6 +147,12 @@ type ListSecurityGroupsRequest struct {
 	Filters []filters.Filter
 }
 
+// BatchSecurityGroupRulesRequest is the request for batch operations on security group rules
+type BatchUpdateSecurityGroupRulesRequest struct {
+	// Rules is the complete list of security group rules to set
+	Rules []SecurityGroupRule `json:"rules" validate:"omitempty,dive"`
+}
+
 // ListSecurityGroups lists all security groups for a given organisation.
 func (c *Client) ListSecurityGroups(ctx context.Context, listRequest *ListSecurityGroupsRequest) ([]SecurityGroup, error) {
 	securityGroups := []SecurityGroup{}
@@ -227,4 +235,36 @@ func (c *Client) DeleteSecurityGroup(ctx context.Context, identity string) error
 		return err
 	}
 	return nil
+}
+
+// BatchUpdateSecurityGroupEgressRules updates the egress rules for a specific security group.
+func (c *Client) BatchUpdateSecurityGroupEgressRules(ctx context.Context, identity string, update BatchUpdateSecurityGroupRulesRequest) ([]SecurityGroupRule, error) {
+	rules := []SecurityGroupRule{}
+	req := c.R().
+		SetBody(update).SetResult(&rules)
+
+	resp, err := c.Do(ctx, req, client.PUT, fmt.Sprintf("%s/%s/egress-rules/batch", SecurityGroupEndpoint, identity))
+	if err != nil {
+		return nil, fmt.Errorf("failed to update security group egress rules: %w", err)
+	}
+	if err := c.Check(resp); err != nil {
+		return rules, fmt.Errorf("failed to update security group egress rules: %w", err)
+	}
+	return rules, nil
+}
+
+// BatchUpdateSecurityGroupIngressRules updates the ingress rules for a specific security group.
+func (c *Client) BatchUpdateSecurityGroupIngressRules(ctx context.Context, identity string, update BatchUpdateSecurityGroupRulesRequest) ([]SecurityGroupRule, error) {
+	rules := []SecurityGroupRule{}
+	req := c.R().
+		SetBody(update).SetResult(&rules)
+
+	resp, err := c.Do(ctx, req, client.PUT, fmt.Sprintf("%s/%s/ingress-rules/batch", SecurityGroupEndpoint, identity))
+	if err != nil {
+		return nil, fmt.Errorf("failed to update security group ingress rules: %w", err)
+	}
+	if err := c.Check(resp); err != nil {
+		return rules, fmt.Errorf("failed to update security group ingress rules: %w", err)
+	}
+	return rules, nil
 }
