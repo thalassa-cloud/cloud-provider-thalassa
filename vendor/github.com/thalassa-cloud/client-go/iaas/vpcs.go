@@ -26,7 +26,7 @@ func (c *Client) ListVpcs(ctx context.Context, request *ListVpcsRequest) ([]Vpc,
 	if request != nil {
 		for _, filter := range request.Filters {
 			for k, v := range filter.ToParams() {
-				req.SetQueryParam(k, v)
+				req = req.SetQueryParam(k, v)
 			}
 		}
 	}
