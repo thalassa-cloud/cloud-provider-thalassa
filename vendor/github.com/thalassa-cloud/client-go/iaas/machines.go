@@ -24,7 +24,7 @@ func (c *Client) ListMachines(ctx context.Context, listRequest *ListMachinesRequ
 	if listRequest != nil {
 		for _, filter := range listRequest.Filters {
 			for k, v := range filter.ToParams() {
-				req.SetQueryParam(k, v)
+				req = req.SetQueryParam(k, v)
 			}
 		}
 	}
@@ -236,7 +236,7 @@ type Machine struct {
 type VirtualMachineInterfaces []VirtualMachineInterface
 type VirtualMachineInterface struct {
 	// Name is the name of the interface
-	Name string `json:"name" validate:"required"`
+	Name string `json:"name"`
 	// MacAddress is the MAC address of the interface
 	MacAddress string `json:"macAddress"`
 	// IPAddresses is a list of IP addresses that are assigned to the interface

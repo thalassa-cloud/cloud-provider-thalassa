@@ -71,7 +71,7 @@ github.com/go-openapi/jsonreference/internal
 # github.com/go-openapi/swag v0.23.0
 ## explicit; go 1.20
 github.com/go-openapi/swag
-# github.com/go-resty/resty/v2 v2.17.0
+# github.com/go-resty/resty/v2 v2.17.1
 ## explicit; go 1.23.0
 github.com/go-resty/resty/v2
 github.com/go-resty/resty/v2/shellescape
@@ -224,7 +224,7 @@ github.com/stoewer/go-strcase
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/assert/yaml
 github.com/stretchr/testify/require
-# github.com/thalassa-cloud/client-go v0.27.0
+# github.com/thalassa-cloud/client-go v0.28.2
 ## explicit; go 1.24.0
 github.com/thalassa-cloud/client-go/filters
 github.com/thalassa-cloud/client-go/iaas
@@ -359,7 +359,7 @@ golang.org/x/net/proxy
 golang.org/x/net/publicsuffix
 golang.org/x/net/trace
 golang.org/x/net/websocket
-# golang.org/x/oauth2 v0.33.0
+# golang.org/x/oauth2 v0.34.0
 ## explicit; go 1.24.0
 golang.org/x/oauth2
 golang.org/x/oauth2/clientcredentials

@@ -150,7 +150,7 @@ type ListSecurityGroupsRequest struct {
 // BatchSecurityGroupRulesRequest is the request for batch operations on security group rules
 type BatchUpdateSecurityGroupRulesRequest struct {
 	// Rules is the complete list of security group rules to set
-	Rules []SecurityGroupRule `json:"rules" validate:"omitempty,dive"`
+	Rules []SecurityGroupRule `json:"rules"`
 }
 
 // ListSecurityGroups lists all security groups for a given organisation.
