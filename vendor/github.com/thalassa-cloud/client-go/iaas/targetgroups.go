@@ -144,8 +144,8 @@ func (c *Client) SetTargetGroupServerAttachments(ctx context.Context, setRequest
 
 // AttachServerToTargetGroup attaches a server to a target group.
 func (c *Client) AttachServerToTargetGroup(ctx context.Context, attachRequest AttachTargetGroupRequest) (*LoadbalancerTargetGroupAttachment, error) {
-	if attachRequest.ServerIdentity == "" {
-		return nil, fmt.Errorf("serverIdentity is required")
+	if attachRequest.ServerIdentity == "" && attachRequest.EndpointIdentity == "" {
+		return nil, fmt.Errorf("serverIdentity or endpointIdentity is required")
 	}
 	if attachRequest.TargetGroupID == "" {
 		return nil, fmt.Errorf("targetGroupID is required")
