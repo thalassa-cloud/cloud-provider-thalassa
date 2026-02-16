@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -83,20 +84,36 @@ const (
 	DELETE httpMethod = "DELETE"
 )
 
-// ExampleAPI is a placeholder for a Thalassa Cloud endpoint call.
-func (c *thalassaCloudClient) ExampleAPI(ctx context.Context, param string) (string, error) {
-	req := c.resty.R().
-		SetQueryParam("some-param", param).
-		SetHeader("Accept", "application/json")
+func parseHTTPMethod(m string) (httpMethod, error) {
+	switch strings.ToUpper(strings.TrimSpace(m)) {
+	case "GET":
+		return GET, nil
+	case "POST":
+		return POST, nil
+	case "PUT":
+		return PUT, nil
+	case "PATCH":
+		return PATCH, nil
+	case "DELETE":
+		return DELETE, nil
+	default:
+		return "", ErrUnsupportedHTTPMethod
+	}
+}
 
-	resp, err := c.Do(ctx, req, GET, "/v1/example")
+// RawRequest performs an HTTP request using the client's base URL, authentication,
+// and configuration. path is relative to the client's base URL. body is optional;
+// when non-nil it is sent with Content-Type: application/json.
+func (c *thalassaCloudClient) RawRequest(ctx context.Context, method, path string, body []byte) (*resty.Response, error) {
+	m, err := parseHTTPMethod(method)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	if resp.IsError() {
-		return "", fmt.Errorf("server returned status %d: %s", resp.StatusCode(), resp.String())
+	req := c.R()
+	if len(body) > 0 {
+		req.SetBody(body).SetHeader("Content-Type", "application/json")
 	}
-	return resp.String(), nil
+	return c.Do(ctx, req, m, path)
 }
 
 func (c *thalassaCloudClient) Check(resp *resty.Response) error {
