@@ -74,6 +74,14 @@ type Client interface {
 
 	// DialWebsocket creates a websocket connection to the specified URL
 	DialWebsocket(ctx context.Context, wsURL string) (*websocket.Conn, error)
+
+	// RawRequest performs an HTTP request using the client's base URL, authentication,
+	// and configuration (rate limiting, organisation/project headers, etc.).
+	// method is the HTTP method (GET, POST, PUT, PATCH, DELETE). path is the request path
+	// relative to the base URL (e.g. "/v1/resources"). body is optional; when non-nil,
+	// it is sent as the request body with Content-Type: application/json.
+	// Returns the resty response so callers can read status code, headers, and body.
+	RawRequest(ctx context.Context, method, path string, body []byte) (*resty.Response, error)
 }
 
 // NewClient applies all options, configures authentication, and returns the client.
