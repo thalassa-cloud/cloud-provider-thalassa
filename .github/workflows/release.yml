@@ -27,7 +27,7 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - name: Download Syft
         uses: anchore/sbom-action/download-syft@v0.23.0
       - name: Download Cosign
