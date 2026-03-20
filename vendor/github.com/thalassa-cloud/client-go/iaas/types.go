@@ -99,6 +99,71 @@ type Subnet struct {
 	V6availableIPs int `json:"v6availableIPs"`
 }
 
+// ReservedIP is a public IPv4/IPv6 address that can be attached to a load balancer or NAT gateway.
+type ReservedIP struct {
+	Identity    string      `json:"identity"`
+	Name        string      `json:"name"`
+	Slug        string      `json:"slug"`
+	Description string      `json:"description"`
+	Labels      Labels      `json:"labels,omitempty"`
+	Annotations Annotations `json:"annotations,omitempty"`
+	CreatedAt   time.Time   `json:"createdAt"`
+	UpdatedAt   *time.Time  `json:"updatedAt,omitempty"`
+
+	Region *Region          `json:"region,omitempty"`
+	Status ReservedIpStatus `json:"status"`
+
+	IPv4Address string `json:"ipv4Address,omitempty"`
+	IPv6Address string `json:"ipv6Address,omitempty"`
+
+	AttachedToResourceType     ReservedIpAttachedResource `json:"attachedToResourceType,omitempty"`
+	AttachedToResourceIdentity string                     `json:"attachedToResourceIdentity,omitempty"`
+}
+
+// ReservedIpStatus is the provisioning/attachment state of a reserved IP.
+type ReservedIpStatus string
+
+const (
+	ReservedIpStatusCreating  ReservedIpStatus = "creating"
+	ReservedIpStatusAvailable ReservedIpStatus = "available"
+	ReservedIpStatusAttached  ReservedIpStatus = "attached"
+	ReservedIpStatusDeleting  ReservedIpStatus = "deleting"
+	ReservedIpStatusDeleted   ReservedIpStatus = "deleted"
+	ReservedIpStatusFailed    ReservedIpStatus = "failed"
+)
+
+// Attached resource types for ReservedIP (API values).
+type ReservedIpAttachedResource string
+
+const (
+	ReservedIpAttachedLoadBalancer ReservedIpAttachedResource = "cloud_vpc_loadbalancer"
+	ReservedIpAttachedNatGateway   ReservedIpAttachedResource = "cloud_vpc_nat_gateway"
+)
+
+// CreateReservedIpRequest is the body for POST /v1/reserved-ips.
+type CreateReservedIpRequest struct {
+	Name        string      `json:"name"`
+	Description string      `json:"description,omitempty"`
+	Labels      Labels      `json:"labels,omitempty"`
+	Annotations Annotations `json:"annotations,omitempty"`
+	Region      string      `json:"region"`
+}
+
+// UpdateReservedIpRequest is the body for PUT /v1/reserved-ips/{identity}.
+type UpdateReservedIpRequest struct {
+	Name        string      `json:"name"`
+	Description string      `json:"description,omitempty"`
+	Labels      Labels      `json:"labels,omitempty"`
+	Annotations Annotations `json:"annotations,omitempty"`
+}
+
+// AssociateReservedIpRequest is the body for POST /v1/reserved-ips/{identity}/associate.
+// Exactly one of LoadbalancerIdentity or NatGatewayIdentity must be set.
+type AssociateReservedIpRequest struct {
+	LoadbalancerIdentity *string `json:"loadbalancerIdentity,omitempty"`
+	NatGatewayIdentity   *string `json:"natGatewayIdentity,omitempty"`
+}
+
 type VpcNatGateway struct {
 	Identity      string    `json:"identity"`
 	Name          string    `json:"name"`
@@ -121,6 +186,10 @@ type VpcNatGateway struct {
 
 	V4IP string `json:"v4IP"`
 	V6IP string `json:"v6IP"`
+
+	// ReservedIpID is the attached reserved IP identity when provisioned via FIP API.
+	ReservedIpID string      `json:"reservedIpId,omitempty"`
+	ReservedIp   *ReservedIP `json:"reservedIp,omitempty"`
 
 	// SecurityGroups is a list of security groups that are attached to the NAT Gateway.
 	SecurityGroups []SecurityGroup `json:"securityGroups"`
@@ -155,6 +224,10 @@ type VpcLoadbalancer struct {
 
 	// SecurityGroups is a list of security groups that are attached to the Loadbalancer.
 	SecurityGroups []SecurityGroup `json:"securityGroups"`
+
+	// ReservedIpIdentity is set when a reserved IP is attached to this load balancer.
+	ReservedIpIdentity string      `json:"reservedIpIdentity,omitempty"`
+	ReservedIp         *ReservedIP `json:"reservedIp,omitempty"`
 }
 
 type Volume struct {
@@ -421,6 +494,8 @@ type CreateVpcNatGateway struct {
 	SecurityGroupAttachments []string `json:"securityGroupAttachments"`
 	// ConfigureDefaultRoute is a boolean indicating whether to configure the default route for the NAT Gateway for the route table of the subnet
 	ConfigureDefaultRoute bool `json:"configureDefaultRoute"`
+	// ReservedIpID, if set, attaches this reserved IP after the NAT gateway is created (must be available, same region).
+	ReservedIpID *string `json:"reservedIpId,omitempty"`
 }
 
 type UpdateVpcNatGateway struct {
@@ -429,6 +504,8 @@ type UpdateVpcNatGateway struct {
 	Labels                   Labels      `json:"labels"`
 	Annotations              Annotations `json:"annotations"`
 	SecurityGroupAttachments []string    `json:"securityGroupAttachments"`
+	// ReservedIpID: nil = unchanged, empty string = detach, non-empty = attach/replace.
+	ReservedIpID *string `json:"reservedIpId,omitempty"`
 }
 
 type CreateMachine struct {

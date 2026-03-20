@@ -11,6 +11,7 @@ The Thalassa Cloud Provider supports various annotations on Kubernetes Services 
 | `loadbalancer.k8s.thalassa.cloud/internal`                       | Boolean                | `false`             | Create an internal load balancer (immutable after creation)            |
 | `loadbalancer.k8s.thalassa.cloud/security-groups`                | Comma-separated string | Empty               | Security group IDs to attach to the load balancer                      |
 | `loadbalancer.k8s.thalassa.cloud/create-security-group`          | Boolean                | `false`             | Automatically create and manage a security group for the load balancer |
+| `loadbalancer.k8s.thalassa.cloud/reserved-ip`                    | String                 | Empty               | Reserved IP identity to attach at create; updates reconcile; empty or removed detaches |
 | `loadbalancer.k8s.thalassa.cloud/acl-allowed-sources`            | Comma-separated string | Empty (allow all)   | Global CIDR ranges allowed to access all listener ports                |
 | `loadbalancer.k8s.thalassa.cloud/acl-port-{port-name-or-number}` | Comma-separated string | Empty               | Per-port CIDR ranges (combined with global ACL)                        |
 | `loadbalancer.k8s.thalassa.cloud/loadbalancing-policy`           | String                 | `"ROUND_ROBIN"`     | Load balancing algorithm (ROUND_ROBIN, RANDOM, MAGLEV)                 |
@@ -99,6 +100,29 @@ spec:
 ```
 
 ## Network Configuration
+
+### Reserved IP
+
+**Annotation:** `loadbalancer.k8s.thalassa.cloud/reserved-ip`
+
+**Type:** String (reserved IP identity)
+
+**Default:** Empty (cloud assigns addressing as usual)
+
+**Description:** Attaches an existing reserved IP when the load balancer is created. The IP must be available and compatible with the subnet / public network. On updates, if the annotation value changes, the load balancer attachment is reconciled. Remove the annotation or set an empty value to detach (per API semantics).
+
+**Example:**
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+  annotations:
+    loadbalancer.k8s.thalassa.cloud/reserved-ip: "reserved-ip-identity-here"
+spec:
+  type: LoadBalancer
+```
 
 ### Security Groups
 

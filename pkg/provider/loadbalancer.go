@@ -388,6 +388,9 @@ func (lb *loadbalancer) createVpcLoadbalancer(ctx context.Context, lbName string
 		InternalLoadbalancer:     internalLoadbalancer,
 		SecurityGroupAttachments: securityGroups,
 	}
+	if rid := lb.getReservedIPIdentityForService(service); rid != "" {
+		createLB.ReservedIpID = ptr.To(rid)
+	}
 	created, err := lb.iaasClient.CreateLoadbalancer(ctx, createLB)
 	if err != nil {
 		klog.Errorf("Failed to create vpc loadbalancer %s: %v", lbName, err)
@@ -452,6 +455,14 @@ func (lb *loadbalancer) getSecurityGroupsForService(service *corev1.Service) []s
 		return strings.Split(val, ",")
 	}
 	return []string{}
+}
+
+// getReservedIPIdentityForService returns the reserved IP identity from the service annotation, or empty if unset.
+func (lb *loadbalancer) getReservedIPIdentityForService(service *corev1.Service) string {
+	if val, ok := service.Annotations[LoadBalancerAnnotationReservedIP]; ok {
+		return strings.TrimSpace(val)
+	}
+	return ""
 }
 
 func convertLoadBalancerCreatePollConfig(configValue *int, defaultValue time.Duration, name string) time.Duration {
@@ -557,11 +568,16 @@ func (lb *loadbalancer) updateVpcLoadbalancer(ctx context.Context, service *core
 		preferredSubnetIdentity = vpcLoadbalancer.Subnet.Identity
 	}
 
-	// check if security groups need to be updated
-	// different identities, or different number of security groups
-	if !reflect.DeepEqual(desiredSecurityGroups, currentSecurityGroupIdentities) || len(desiredSecurityGroups) != len(currentSecurityGroupIdentities) || vpcLoadbalancer.Subnet.Identity != preferredSubnetIdentity {
+	desiredReservedIP := lb.getReservedIPIdentityForService(service)
+	currentReservedIP := vpcLoadbalancer.ReservedIpIdentity
+
+	sgNeedsUpdate := !reflect.DeepEqual(desiredSecurityGroups, currentSecurityGroupIdentities) || len(desiredSecurityGroups) != len(currentSecurityGroupIdentities)
+	subnetNeedsUpdate := vpcLoadbalancer.Subnet.Identity != preferredSubnetIdentity
+	reservedIPNeedsUpdate := desiredReservedIP != currentReservedIP
+
+	if sgNeedsUpdate || subnetNeedsUpdate || reservedIPNeedsUpdate {
 		klog.Infof("loadbalancer %s needs to be updated", vpcLoadbalancer.Identity)
-		if _, err := lb.iaasClient.UpdateLoadbalancer(ctx, vpcLoadbalancer.Identity, iaas.UpdateLoadbalancer{
+		update := iaas.UpdateLoadbalancer{
 			Name:                     vpcLoadbalancer.Name,
 			Description:              vpcLoadbalancer.Description,
 			Labels:                   vpcLoadbalancer.Labels,
@@ -569,7 +585,15 @@ func (lb *loadbalancer) updateVpcLoadbalancer(ctx context.Context, service *core
 			Subnet:                   ptr.To(preferredSubnetIdentity),
 			DeleteProtection:         vpcLoadbalancer.DeleteProtection,
 			SecurityGroupAttachments: desiredSecurityGroups,
-		}); err != nil {
+		}
+		if reservedIPNeedsUpdate {
+			if desiredReservedIP == "" {
+				update.ReservedIpID = ptr.To("")
+			} else {
+				update.ReservedIpID = ptr.To(desiredReservedIP)
+			}
+		}
+		if _, err := lb.iaasClient.UpdateLoadbalancer(ctx, vpcLoadbalancer.Identity, update); err != nil {
 			return fmt.Errorf("failed to update loadbalancer: %v", err)
 		}
 	}

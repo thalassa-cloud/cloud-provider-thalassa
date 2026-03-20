@@ -61,6 +61,10 @@ const (
 	// The security group will be created with the same rules as the loadbalancer.
 	// The security group will be deleted when the loadbalancer is deleted.
 	LoadBalancerAnnotationCreateSecurityGroup = "loadbalancer.k8s.thalassa.cloud/create-security-group"
+
+	// LoadBalancerAnnotationReservedIP is the identity of a reserved IP to attach when the load balancer is created.
+	// Updates reconcile attachment when the value changes; removing the annotation or setting an empty value detaches.
+	LoadBalancerAnnotationReservedIP = "loadbalancer.k8s.thalassa.cloud/reserved-ip"
 )
 
 const (
