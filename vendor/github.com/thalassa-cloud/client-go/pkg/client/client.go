@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sync"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/gorilla/websocket"
@@ -28,6 +29,7 @@ var (
 	ErrEmptyPersonalToken      = errors.New("personal access token cannot be empty")
 	ErrMissingToken            = errors.New("token cannot be empty")
 	ErrMissingBasicCredentials = errors.New("basic auth requires username/password")
+	ErrOIDCTokenExchangeConfig = errors.New("OIDC token exchange requires token URL, organisation ID, service account ID, and either SubjectToken or SubjectTokenFile")
 	ErrUnsupportedHTTPMethod   = errors.New("unsupported HTTP method")
 	ErrNotFound                = errors.New("not found")
 	ErrBadRequest              = errors.New("bad request")
@@ -42,6 +44,7 @@ const (
 	AuthPersonalAccessToken
 	AuthBasic
 	AuthCustom
+	AuthOIDCTokenExchange
 )
 
 func IsNotFound(err error) bool {
@@ -126,6 +129,10 @@ type thalassaCloudClient struct {
 	oidcToken         *oauth2.Token // cached token
 	allowInsecureOIDC bool
 
+	// OIDC token exchange (RFC 8693-style) for IdP JWT → Thalassa bearer token.
+	oidcTokenExchange   *OIDCTokenExchangeConfig
+	oidcTokenExchangeMu sync.Mutex
+
 	// Personal Access Token.
 	personalToken string
 
@@ -166,7 +173,7 @@ func (c *thalassaCloudClient) SetOrganisation(organisation string) {
 
 func (c *thalassaCloudClient) GetAuthToken() string {
 	switch c.authType {
-	case AuthOIDC:
+	case AuthOIDC, AuthOIDCTokenExchange:
 		if c.oidcToken != nil && c.oidcToken.Valid() {
 			return c.oidcToken.AccessToken
 		}
