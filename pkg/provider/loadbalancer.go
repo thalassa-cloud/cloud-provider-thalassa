@@ -750,6 +750,7 @@ func (lb *loadbalancer) ensureManagedSecurityGroup(ctx context.Context, service 
 			Priority:      110,
 			RemoteType:    iaas.SecurityGroupRuleRemoteTypeAddress,
 			RemoteAddress: ptr.To("::/0"),
+			Policy:        iaas.SecurityGroupRulePolicyAllow,
 		},
 	}
 
