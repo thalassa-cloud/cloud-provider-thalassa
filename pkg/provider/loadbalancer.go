@@ -32,6 +32,9 @@ const (
 	defaultLoadBalancerCreatePollTimeout = 5 * time.Minute
 )
 
+// endpointSliceResyncInterval is a safety-net reconciliation interval.
+var endpointSliceResyncInterval = 2 * time.Minute
+
 // loadbalancer represents a load balancer configuration and its associated resources.
 // It includes the namespace, client, configuration, and infrastructure labels.
 // Additionally, it holds information about the tenant VPC name and external network details.
@@ -697,6 +700,7 @@ func IsNodeReady(node *corev1.Node) bool {
 // startServiceQueueProcessor starts the service queue processor goroutine
 func (lb *loadbalancer) startServiceQueueProcessor() {
 	go lb.processServiceQueue()
+	lb.startPeriodicServiceResync()
 }
 
 // stopServiceQueueProcessor stops the service queue processor
@@ -705,6 +709,52 @@ func (lb *loadbalancer) stopServiceQueueProcessor() {
 		lb.cancel()
 	}
 	lb.serviceQueue.ShutDown()
+}
+
+// enqueueLocalTrafficPolicyLoadBalancers lists all services and enqueues resync for
+// LoadBalancer services with externalTrafficPolicy=Local.
+func (lb *loadbalancer) enqueueLocalTrafficPolicyLoadBalancers() {
+	services, err := lb.endpointSlicesClient.CoreV1().Services("").List(lb.ctx, metav1.ListOptions{})
+	if err != nil {
+		klog.Errorf("Failed to list services for periodic resync: %v", err)
+		return
+	}
+
+	for i := range services.Items {
+		svc := &services.Items[i]
+		if svc.Spec.Type != corev1.ServiceTypeLoadBalancer {
+			continue
+		}
+		if svc.Spec.ExternalTrafficPolicy != corev1.ServiceExternalTrafficPolicyTypeLocal {
+			continue
+		}
+		serviceKey := fmt.Sprintf("%s/%s", svc.Namespace, svc.Name)
+		lb.serviceQueue.Add(serviceKey)
+	}
+}
+
+func (lb *loadbalancer) startPeriodicServiceResync() {
+	if endpointSliceResyncInterval <= 0 {
+		return
+	}
+
+	ticker := time.NewTicker(endpointSliceResyncInterval)
+	go func() {
+		defer ticker.Stop()
+
+		// Run an initial scan soon after startup so a missed watch event
+		// doesn't cause a long stale period.
+		lb.enqueueLocalTrafficPolicyLoadBalancers()
+
+		for {
+			select {
+			case <-lb.ctx.Done():
+				return
+			case <-ticker.C:
+				lb.enqueueLocalTrafficPolicyLoadBalancers()
+			}
+		}
+	}()
 }
 
 // cleanup performs cleanup when the loadbalancer is no longer needed
@@ -742,6 +792,7 @@ func (lb *loadbalancer) ensureManagedSecurityGroup(ctx context.Context, service 
 			Priority:      100,
 			RemoteType:    iaas.SecurityGroupRuleRemoteTypeAddress,
 			RemoteAddress: ptr.To("0.0.0.0/0"),
+			Policy:        iaas.SecurityGroupRulePolicyAllow,
 		},
 		{
 			Name:          "allow-all-outbound",
