@@ -199,8 +199,7 @@ func thalassaCloudProviderFactory(config io.Reader) (cloudprovider.Interface, er
 func (c *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, stop <-chan struct{}) {
 	client, err := clientBuilder.Client("endpoint-slices")
 	if err != nil {
-		klog.Errorf("failed to get endpoint-slices client: %v", err)
-		return
+		klog.Fatalf("failed to get endpoint-slices client: %v", err)
 	}
 
 	c.endpointSlicesClient = client
