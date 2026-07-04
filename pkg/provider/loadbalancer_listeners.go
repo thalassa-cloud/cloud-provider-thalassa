@@ -38,20 +38,20 @@ func (lb *loadbalancer) updateVpcLoadbalancerListener(ctx context.Context, servi
 		return fmt.Errorf("failed to list listeners: %v", err)
 	}
 
-	desiredListenersPortMap := map[int]iaas.VpcLoadbalancerListener{}
+	desiredListenersPortProtocolMap := map[string]iaas.VpcLoadbalancerListener{}
 	for _, listener := range desiredListeners {
-		desiredListenersPortMap[listener.Port] = listener
+		desiredListenersPortProtocolMap[listenerPortProtocolKey(listener.Protocol, listener.Port)] = listener
 	}
 
-	existingListenersPortMap := map[int]iaas.VpcLoadbalancerListener{}
+	existingListenersPortProtocolMap := map[string]iaas.VpcLoadbalancerListener{}
 	for _, listener := range existingListenersForLoadBalancer {
-		existingListenersPortMap[listener.Port] = listener
+		existingListenersPortProtocolMap[listenerPortProtocolKey(listener.Protocol, listener.Port)] = listener
 	}
 
 	if !equality.Semantic.DeepEqual(desiredListeners, existingListenersForLoadBalancer) {
 		// check which listeners to delete
 		for _, listener := range existingListenersForLoadBalancer {
-			if listenerToUpdate, ok := desiredListenersPortMap[listener.Port]; !ok {
+			if listenerToUpdate, ok := desiredListenersPortProtocolMap[listenerPortProtocolKey(listener.Protocol, listener.Port)]; !ok {
 				klog.Infof("deleting listener %q for loadbalancer %q", listener.Name, loadbalancer.Name)
 				if err := lb.iaasClient.DeleteListener(ctx, loadbalancer.Identity, listener.Identity); err != nil {
 					return fmt.Errorf("failed to delete listener: %v", err)
@@ -87,7 +87,7 @@ func (lb *loadbalancer) updateVpcLoadbalancerListener(ctx context.Context, servi
 
 	// create missing listeners
 	for _, listener := range desiredListeners {
-		if _, ok := existingListenersPortMap[listener.Port]; !ok {
+		if _, ok := existingListenersPortProtocolMap[listenerPortProtocolKey(listener.Protocol, listener.Port)]; !ok {
 			targetGroupIdentity := lb.getTargetGroupIdentityForListener(service, listener, targetGroups)
 			if targetGroupIdentity == "" {
 				klog.Infof("WARNING: desired listener %q - target group identity is empty, skipping", listener.Name)
@@ -202,6 +202,10 @@ func (lb *loadbalancer) parseAclSources(sourcesStr string) []string {
 	}
 
 	return validSources
+}
+
+func listenerPortProtocolKey(protocol iaas.LoadbalancerProtocol, port int) string {
+	return fmt.Sprintf("%s:%d", protocol, port)
 }
 
 // removeDuplicateStrings removes duplicate strings from a slice while preserving order
