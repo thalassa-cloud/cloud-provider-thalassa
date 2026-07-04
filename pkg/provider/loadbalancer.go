@@ -142,6 +142,9 @@ func (lb *loadbalancer) EnsureLoadBalancer(ctx context.Context, clusterName stri
 			klog.Errorf("Failed to get LoadBalancer service: %v", err)
 			return false, err
 		}
+		if vpcLB == nil {
+			return false, nil
+		}
 		if vpcLB.Status == "ready" && len(vpcLB.ExternalIpAddresses) > 0 {
 			vpcLoadbalancer = vpcLB
 			return true, nil
