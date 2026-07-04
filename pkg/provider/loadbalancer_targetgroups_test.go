@@ -333,6 +333,50 @@ func TestGetDesiredVpcLoadbalancerTargetGroups(t *testing.T) {
 			expectedError: false,
 		},
 		{
+			name: "service with HealthCheckNodePort and tcp health check protocol",
+			service: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-service",
+					Namespace: "default",
+					UID:       "test-uid-8b",
+					Annotations: map[string]string{
+						LoadbalancerAnnotationHealthCheckProtocol: "tcp",
+					},
+				},
+				Spec: corev1.ServiceSpec{
+					ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyLocal,
+					HealthCheckNodePort:   31000,
+					Ports: []corev1.ServicePort{
+						{
+							Name:     "http",
+							Protocol: corev1.ProtocolTCP,
+							Port:     80,
+							NodePort: 30000,
+						},
+					},
+				},
+			},
+			expectedTGs: []iaas.VpcLoadbalancerTargetGroup{
+				{
+					Name:                "atestuid8b-http",
+					TargetPort:          30000,
+					Protocol:            iaas.ProtocolTCP,
+					EnableProxyProtocol: ptr.To(false),
+					LoadbalancingPolicy: ptr.To(iaas.LoadbalancingPolicyRoundRobin),
+					HealthCheck: &iaas.BackendHealthCheck{
+						Port:               31000,
+						Protocol:           iaas.ProtocolTCP,
+						Path:               DefaultHealthCheckPath,
+						TimeoutSeconds:     DefaultHealthCheckTimeoutSeconds,
+						PeriodSeconds:      DefaultHealthCheckPeriodSeconds,
+						HealthyThreshold:   DefaultHealthCheckHealthyThreshold,
+						UnhealthyThreshold: DefaultHealthCheckUnhealthyThreshold,
+					},
+				},
+			},
+			expectedError: false,
+		},
+		{
 			name: "service with invalid health check timeout",
 			service: &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
