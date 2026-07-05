@@ -25,8 +25,8 @@ func Init(version, commit, date, builtBy string) {
 
 // Print version info
 func Print(writer io.Writer) {
-	fmt.Fprintf(writer, "Version information\nVersion: %s, Commit: %s\n", Version(), Commit())
-	fmt.Fprintf(writer, "Build date: %s, Build by: %s\n", BuildDate(), BuiltBy())
+	_, _ = fmt.Fprintf(writer, "Version information\nVersion: %s, Commit: %s\n", Version(), Commit())
+	_, _ = fmt.Fprintf(writer, "Build date: %s, Build by: %s\n", BuildDate(), BuiltBy())
 }
 
 // Commit returns git commit

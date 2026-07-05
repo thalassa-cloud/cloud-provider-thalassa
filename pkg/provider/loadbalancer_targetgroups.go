@@ -87,7 +87,7 @@ func (l *loadbalancer) getDesiredVpcLoadbalancerTargetGroups(service *corev1.Ser
 		}
 
 		if service.Spec.HealthCheckNodePort > 0 {
-			port := int32(service.Spec.HealthCheckNodePort)
+			port := service.Spec.HealthCheckNodePort
 			if healthCheckPort > 0 {
 				port = int32(healthCheckPort)
 			}
@@ -153,7 +153,13 @@ func (l *loadbalancer) cleanupUnusedTargetGroups(ctx context.Context, service *c
 	return nil
 }
 
-func (l *loadbalancer) createOrUpdateTargetGroups(ctx context.Context, service *corev1.Service, _ *iaas.VpcLoadbalancer, desiredTargetGroups []iaas.VpcLoadbalancerTargetGroup, nodes []*corev1.Node) ([]iaas.VpcLoadbalancerTargetGroup, error) {
+func (l *loadbalancer) createOrUpdateTargetGroups(
+	ctx context.Context,
+	service *corev1.Service,
+	_ *iaas.VpcLoadbalancer,
+	desiredTargetGroups []iaas.VpcLoadbalancerTargetGroup,
+	nodes []*corev1.Node,
+) ([]iaas.VpcLoadbalancerTargetGroup, error) {
 	klog.Infof("creating or updating target groups for service %q", service.GetName())
 
 	tgs := []iaas.VpcLoadbalancerTargetGroup{}

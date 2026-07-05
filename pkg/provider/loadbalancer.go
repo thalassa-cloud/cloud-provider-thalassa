@@ -268,42 +268,48 @@ func (lb *loadbalancer) EnsureLoadBalancerDeleted(ctx context.Context, clusterNa
 }
 
 func (lb *loadbalancer) fetchVpcLoadbalancerFromCloud(ctx context.Context, clusterName string, service *corev1.Service) (*iaas.VpcLoadbalancer, error) {
+	labels := lb.GetLabelsForVpcLoadbalancer(service)
 	loadbalancersInVpc, err := lb.iaasClient.ListLoadbalancers(ctx, &iaas.ListLoadbalancersRequest{
 		Filters: []filters.Filter{
 			&filters.FilterKeyValue{
-				Key:   "vpc",
+				Key:   filters.FilterVpcIdentity,
 				Value: lb.vpcIdentity,
 			},
-			// 	{
-			// 		Key:   "name",
-			// 		Value: lbName,
-			// 	},
+			&filters.LabelFilter{
+				MatchLabels: labels,
+			},
 		},
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	if len(loadbalancersInVpc) == 0 {
-		klog.V(4).Infof("no loadbalancers found in vpc %q", lb.vpcIdentity)
-		return nil, nil
-	}
-
-	labels := lb.GetLabelsForVpcLoadbalancer(service)
 	for _, loadbalancer := range loadbalancersInVpc {
-		if !matchLabels(labels, loadbalancer.Labels) {
-			klog.V(6).Infof("loadbalancer %q has different labels than expected, skipping (expected: %v, actual: %v)", loadbalancer.Identity, labels, loadbalancer.Labels)
-			continue
+		if matchLabels(labels, loadbalancer.Labels) {
+			klog.V(4).Infof("loadbalancer %q has matching labels, returning", loadbalancer.Identity)
+			return &loadbalancer, nil
 		}
-		klog.V(4).Infof("loadbalancer %q has matching labels, returning", loadbalancer.Identity)
-		return &loadbalancer, nil
 	}
 
-	klog.V(4).Infof("warning: no loadbalancer found in vpc %q with matching labels, trying to find by name", lb.vpcIdentity)
+	klog.V(4).Infof("no loadbalancer found in vpc %q with matching labels, trying to find by name", lb.vpcIdentity)
 
-	// fallback to use name?
 	lbName := lb.GetLoadBalancerName(ctx, clusterName, service)
-	for _, loadbalancer := range loadbalancersInVpc {
+	loadbalancersByName, err := lb.iaasClient.ListLoadbalancers(ctx, &iaas.ListLoadbalancersRequest{
+		Filters: []filters.Filter{
+			&filters.FilterKeyValue{
+				Key:   filters.FilterVpcIdentity,
+				Value: lb.vpcIdentity,
+			},
+			&filters.FilterKeyValue{
+				Key:   filters.FilterName,
+				Value: lbName,
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, loadbalancer := range loadbalancersByName {
 		if loadbalancer.Name == lbName {
 			klog.V(4).Infof("loadbalancer %q has matching name, returning", loadbalancer.Identity)
 			return &loadbalancer, nil
@@ -693,7 +699,7 @@ func IsNodeReady(node *corev1.Node) bool {
 		return false
 	}
 	for _, condition := range node.Status.Conditions {
-		if condition.Type == corev1.NodeReady && condition.Status == corev1.ConditionStatus(corev1.ConditionTrue) {
+		if condition.Type == corev1.NodeReady && condition.Status == corev1.ConditionTrue {
 			return true
 		}
 	}

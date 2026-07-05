@@ -58,4 +58,3 @@ func TestLoadBalancer_EnqueueLocalTrafficPolicyLoadBalancers(t *testing.T) {
 	assert.Equal(t, "default/lb-local", item)
 	lb.serviceQueue.Done(item)
 }
-

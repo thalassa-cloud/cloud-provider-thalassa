@@ -63,15 +63,7 @@ func (i *instancesV2) InstanceShutdown(ctx context.Context, node *corev1.Node) (
 		return false, err
 	}
 
-	switch vmi.Status.Status {
-	case "deleted":
-		klog.Infof("instance %s is shutdown.", vmi.Name)
-		return true, nil
-	case "unknown":
-		return true, fmt.Errorf("instance is in unknown state")
-	default:
-		return false, nil
-	}
+	return machineIsShutdown(vmi)
 }
 
 // InstanceMetadata returns the instance's metadata.
@@ -112,37 +104,70 @@ func (*instancesV2) getInstanceType(instance *iaas.Machine) string {
 	return ""
 }
 
-// findVirtualMachine finds a virtual machine instance of the corresponding node
+// machineIsShutdown reports whether a machine should be treated as shut down by the node lifecycle controller.
+func machineIsShutdown(machine *iaas.Machine) (bool, error) {
+	if machine == nil {
+		return true, nil
+	}
+
+	switch machine.State {
+	case iaas.MachineStateRunning:
+		return false, nil
+	case iaas.MachineStateStopped:
+		klog.Infof("instance %s is stopped.", machine.Name)
+		return true, nil
+	case iaas.MachineStateDeleting, iaas.MachineStateDeleted:
+		klog.Infof("instance %s is deleted.", machine.Name)
+		return true, nil
+	}
+
+	switch machine.Status.Status {
+	case "deleted":
+		klog.Infof("instance %s is shutdown.", machine.Name)
+		return true, nil
+	case "unknown":
+		return true, fmt.Errorf("instance is in unknown state")
+	default:
+		return false, nil
+	}
+}
+
+// findVirtualMachine finds a virtual machine instance of the corresponding node.
 func (i *instancesV2) findVirtualMachine(ctx context.Context, node *corev1.Node) (*iaas.Machine, error) {
-	// TODO: implement filters in the API
+	if node.Spec.ProviderID != "" {
+		instanceID, err := instanceIDFromProviderID(node.Spec.ProviderID)
+		if err != nil {
+			return nil, err
+		}
+		machine, err := i.iaasClient.GetMachine(ctx, instanceID)
+		if err != nil {
+			if thalassaclient.IsNotFound(err) {
+				return nil, cloudprovider.InstanceNotFound
+			}
+			return nil, err
+		}
+		return machine, nil
+	}
+
 	machines, err := i.iaasClient.ListMachines(ctx, &iaas.ListMachinesRequest{
 		Filters: []filters.Filter{
 			&filters.FilterKeyValue{
-				Key:   "vpc",
+				Key:   filters.FilterVpcIdentity,
 				Value: i.vpcIdentity,
 			},
-			// &filters.LabelFilter{
-			// 	MatchLabels: map[string]string{
-			// 		"name": node.GetName(),
-			// 	},
-			// },
+			&filters.FilterKeyValue{
+				Key:   filters.FilterSlug,
+				Value: node.GetName(),
+			},
 		},
 	})
 	if err != nil {
 		return nil, err
 	}
-	for _, machine := range machines {
-		if machine.Vpc == nil {
-			continue
-		}
-		if machine.Vpc.Identity != i.vpcIdentity {
-			continue
-		}
-		if machine.Slug == node.GetName() {
-			return &machine, nil
-		}
+	if len(machines) == 0 {
+		return nil, cloudprovider.InstanceNotFound
 	}
-	return nil, cloudprovider.InstanceNotFound
+	return &machines[0], nil
 }
 
 func (i *instancesV2) getNodeAddresses(vmi *iaas.Machine, prevAddrs []corev1.NodeAddress) []corev1.NodeAddress {
