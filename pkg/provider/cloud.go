@@ -43,7 +43,6 @@ type Cloud struct {
 	iaasClient *iaas.Client
 
 	endpointSlicesClient clientset.Interface
-	endpointSliceWatcher *EndpointSliceWatcher
 
 	stopCh           <-chan struct{}
 	loadBalancer     cloudprovider.LoadBalancer

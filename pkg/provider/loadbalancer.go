@@ -699,7 +699,7 @@ func IsNodeReady(node *corev1.Node) bool {
 		return false
 	}
 	for _, condition := range node.Status.Conditions {
-		if condition.Type == corev1.NodeReady && condition.Status == corev1.ConditionStatus(corev1.ConditionTrue) {
+		if condition.Type == corev1.NodeReady && condition.Status == corev1.ConditionTrue {
 			return true
 		}
 	}

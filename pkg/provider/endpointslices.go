@@ -23,8 +23,6 @@ type EndpointSliceWatcher struct {
 
 	// Track services that have externalTrafficPolicy=Local
 	localTrafficServices sync.Map
-
-	mu sync.RWMutex
 }
 
 func NewEndpointSliceWatcher(
@@ -46,26 +44,32 @@ func NewEndpointSliceWatcher(
 	w.serviceInformer = serviceFactory
 
 	// Add event handlers for endpoint slices
-	w.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := w.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    w.handleEndpointSliceAdd,
 		UpdateFunc: w.handleEndpointSliceUpdate,
 		DeleteFunc: w.handleEndpointSliceDelete,
 	})
+	if err != nil {
+		klog.Errorf("Failed to add event handler for endpoint slices: %v", err)
+	}
 
 	// Add event handlers for services to track externalTrafficPolicy changes
 	serviceInformer := w.serviceInformer.Core().V1().Services().Informer()
-	serviceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err = serviceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    w.handleServiceAdd,
 		UpdateFunc: w.handleServiceUpdate,
 		DeleteFunc: w.handleServiceDelete,
 	})
+	if err != nil {
+		klog.Errorf("Failed to add event handler for services: %v", err)
+	}
 
 	// Start informers
 	epSliceFactory.Start(stopCh)
 	serviceFactory.Start(stopCh)
 
 	// Wait for caches to sync
-	cache.WaitForCacheSync(stopCh, w.informer.HasSynced, serviceInformer.HasSynced)
+	_ = cache.WaitForCacheSync(stopCh, w.informer.HasSynced, serviceInformer.HasSynced)
 
 	return w
 }
