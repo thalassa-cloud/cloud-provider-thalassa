@@ -69,12 +69,38 @@ changelog:
   use: github
   sort: asc
   groups:
+    - title: 'Features'
+      regexp: "^feat\\(.*\\):"
+      order: 1
+    - title: 'Bug Fixes'
+      regexp: "^fix\\(.*\\):"
+      order: 2
+    - title: 'Documentation'
+      regexp: "^docs\\(.*\\):"
+      order: 3
+    - title: 'Style'
+      regexp: "^style\\(.*\\):"
+      order: 4
+    - title: 'Refactoring'
+      regexp: "^refactor\\(.*\\):"
+      order: 5
+    - title: 'Performance'
+      regexp: "^perf\\(.*\\):"
+      order: 6
+    - title: 'Tests'
+      regexp: "^test\\(.*\\):"
+      order: 7
+    - title: 'Chores'
+      regexp: "^chore\\(.*\\):"
+      order: 8
     - title: 'Dependencies'
-      regexp: "^Update dependency"
+      regexp: "^(deps\\(.*\\):|chore\\(deps\\).*:)"
+      order: 9
+    - title: 'Other'
+      regexp: "^.*:"
       order: 999
-    - title: Changes
-      order: 0
   filters:
     # Commit messages matching the regexp listed here will be removed from the changelog
     exclude:
       - '^Merge branch'
+
