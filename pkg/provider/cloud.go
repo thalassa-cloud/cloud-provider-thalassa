@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/thalassa-cloud/client-go/iaas"
@@ -43,6 +44,10 @@ type Cloud struct {
 
 	endpointSlicesClient clientset.Interface
 	endpointSliceWatcher *EndpointSliceWatcher
+
+	stopCh           <-chan struct{}
+	loadBalancer     cloudprovider.LoadBalancer
+	loadBalancerOnce sync.Once
 }
 
 type CloudConfig struct {
@@ -203,6 +208,7 @@ func (c *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, 
 	}
 
 	c.endpointSlicesClient = client
+	c.stopCh = stop
 }
 
 // LoadBalancer returns a balancer interface. Also returns true if the interface is supported, false otherwise.
@@ -211,7 +217,22 @@ func (c *Cloud) LoadBalancer() (cloudprovider.LoadBalancer, bool) {
 		return nil, false
 	}
 
-	// Create context for the loadbalancer informers
+	c.loadBalancerOnce.Do(func() {
+		c.loadBalancer = c.newLoadBalancer()
+		if c.stopCh != nil {
+			go func() {
+				<-c.stopCh
+				if lb, ok := c.loadBalancer.(*loadbalancer); ok {
+					lb.cleanup()
+				}
+			}()
+		}
+	})
+
+	return c.loadBalancer, true
+}
+
+func (c *Cloud) newLoadBalancer() *loadbalancer {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	lb := &loadbalancer{
@@ -230,27 +251,20 @@ func (c *Cloud) LoadBalancer() (cloudprovider.LoadBalancer, bool) {
 		cancel: cancel,
 	}
 
-	// Initialize the service queue
 	lb.serviceQueue = workqueue.NewTypedRateLimitingQueueWithConfig(
 		workqueue.NewTypedItemExponentialFailureRateLimiter[string](5*time.Second, 30*time.Second),
 		workqueue.TypedRateLimitingQueueConfig[string]{Name: "loadbalancer-service-resync"},
 	)
 
-	// Create a stop channel for the endpoint slice watcher
-	stopCh := make(chan struct{})
+	lb.endpointSliceWatcher = NewEndpointSliceWatcher(c.endpointSlicesClient, c.stopCh, lb.triggerServiceResync)
 
-	// Create the endpoint slice watcher with the resync callback
-	lb.endpointSliceWatcher = NewEndpointSliceWatcher(c.endpointSlicesClient, stopCh, lb.triggerServiceResync)
-
-	// Set up the node filter with the endpoint slice lister
 	lb.nodeFilter = &NodeFilter{
 		epSliceLister: lb.endpointSliceWatcher.epSliceInformer.Discovery().V1().EndpointSlices().Lister(),
 	}
 
-	// Start the service queue processor
 	lb.startServiceQueueProcessor()
 
-	return lb, true
+	return lb
 }
 
 // Instances returns an instances interface. Also returns true if the interface is supported, false otherwise.
