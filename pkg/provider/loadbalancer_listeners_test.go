@@ -134,6 +134,76 @@ func TestGetPerPortAclAllowedSources(t *testing.T) {
 	}
 }
 
+func TestGetGlobalAclAllowedSources(t *testing.T) {
+	lb := &loadbalancer{}
+
+	tests := []struct {
+		name            string
+		service         *corev1.Service
+		expectedSources []string
+	}{
+		{
+			name: "loadBalancerSourceRanges only",
+			service: &corev1.Service{
+				Spec: corev1.ServiceSpec{
+					LoadBalancerSourceRanges: []string{"203.0.113.0/24", "198.51.100.0/24"},
+				},
+			},
+			expectedSources: []string{"203.0.113.0/24", "198.51.100.0/24"},
+		},
+		{
+			name: "annotation only",
+			service: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						LoadbalancerAnnotationAclAllowedSources: "10.0.0.0/8,192.168.1.0/24",
+					},
+				},
+			},
+			expectedSources: []string{"10.0.0.0/8", "192.168.1.0/24"},
+		},
+		{
+			name: "loadBalancerSourceRanges and annotation combined with duplicates removed",
+			service: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						LoadbalancerAnnotationAclAllowedSources: "10.0.0.0/8,192.168.1.0/24",
+					},
+				},
+				Spec: corev1.ServiceSpec{
+					LoadBalancerSourceRanges: []string{"203.0.113.0/24", "10.0.0.0/8"},
+				},
+			},
+			expectedSources: []string{"203.0.113.0/24", "10.0.0.0/8", "192.168.1.0/24"},
+		},
+		{
+			name: "neither configured",
+			service: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{},
+				},
+			},
+			expectedSources: []string{},
+		},
+		{
+			name: "invalid CIDR in loadBalancerSourceRanges skipped",
+			service: &corev1.Service{
+				Spec: corev1.ServiceSpec{
+					LoadBalancerSourceRanges: []string{"203.0.113.0/24", "invalid", "198.51.100.0/24"},
+				},
+			},
+			expectedSources: []string{"203.0.113.0/24", "198.51.100.0/24"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := lb.getGlobalAclAllowedSources(tt.service)
+			assert.Equal(t, tt.expectedSources, result)
+		})
+	}
+}
+
 func TestParseAclSources(t *testing.T) {
 	lb := &loadbalancer{}
 
@@ -375,6 +445,108 @@ func TestDesiredVpcLoadbalancerListener_WithPerPortAcl(t *testing.T) {
 					Port:           80,
 					Protocol:       iaas.ProtocolTCP,
 					AllowedSources: []string{},
+				},
+			},
+		},
+		{
+			name: "service with loadBalancerSourceRanges only",
+			service: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-service",
+					Namespace: "default",
+				},
+				Spec: corev1.ServiceSpec{
+					LoadBalancerSourceRanges: []string{"203.0.113.0/24", "198.51.100.0/24"},
+					Ports: []corev1.ServicePort{
+						{
+							Name:     "http",
+							Port:     80,
+							Protocol: corev1.ProtocolTCP,
+						},
+						{
+							Name:     "https",
+							Port:     443,
+							Protocol: corev1.ProtocolTCP,
+						},
+					},
+				},
+			},
+			expectedListeners: []iaas.VpcLoadbalancerListener{
+				{
+					Port:           80,
+					Protocol:       iaas.ProtocolTCP,
+					AllowedSources: []string{"203.0.113.0/24", "198.51.100.0/24"},
+				},
+				{
+					Port:           443,
+					Protocol:       iaas.ProtocolTCP,
+					AllowedSources: []string{"203.0.113.0/24", "198.51.100.0/24"},
+				},
+			},
+		},
+		{
+			name: "service with loadBalancerSourceRanges and ACL annotations combined",
+			service: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-service",
+					Namespace: "default",
+					Annotations: map[string]string{
+						"loadbalancer.k8s.thalassa.cloud/acl-allowed-sources": "10.0.0.0/8",
+						"loadbalancer.k8s.thalassa.cloud/acl-port-http":       "192.168.1.0/24",
+					},
+				},
+				Spec: corev1.ServiceSpec{
+					LoadBalancerSourceRanges: []string{"203.0.113.0/24", "10.0.0.0/8"},
+					Ports: []corev1.ServicePort{
+						{
+							Name:     "http",
+							Port:     80,
+							Protocol: corev1.ProtocolTCP,
+						},
+						{
+							Name:     "https",
+							Port:     443,
+							Protocol: corev1.ProtocolTCP,
+						},
+					},
+				},
+			},
+			expectedListeners: []iaas.VpcLoadbalancerListener{
+				{
+					Port:           80,
+					Protocol:       iaas.ProtocolTCP,
+					AllowedSources: []string{"203.0.113.0/24", "10.0.0.0/8", "192.168.1.0/24"},
+				},
+				{
+					Port:           443,
+					Protocol:       iaas.ProtocolTCP,
+					AllowedSources: []string{"203.0.113.0/24", "10.0.0.0/8"},
+				},
+			},
+		},
+		{
+			name: "service with invalid CIDR in loadBalancerSourceRanges",
+			service: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-service",
+					Namespace: "default",
+				},
+				Spec: corev1.ServiceSpec{
+					LoadBalancerSourceRanges: []string{"203.0.113.0/24", "not-a-cidr", "198.51.100.0/24"},
+					Ports: []corev1.ServicePort{
+						{
+							Name:     "http",
+							Port:     80,
+							Protocol: corev1.ProtocolTCP,
+						},
+					},
+				},
+			},
+			expectedListeners: []iaas.VpcLoadbalancerListener{
+				{
+					Port:           80,
+					Protocol:       iaas.ProtocolTCP,
+					AllowedSources: []string{"203.0.113.0/24", "198.51.100.0/24"},
 				},
 			},
 		},

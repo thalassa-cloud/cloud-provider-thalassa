@@ -114,11 +114,7 @@ func (lb *loadbalancer) updateVpcLoadbalancerListener(ctx context.Context, servi
 }
 
 func (lb *loadbalancer) desiredVpcLoadbalancerListener(service *corev1.Service) []iaas.VpcLoadbalancerListener {
-	// Get global ACL allowed sources
-	globalAclAllowedSources := []string{}
-	if val, ok := service.Annotations[LoadbalancerAnnotationAclAllowedSources]; ok {
-		globalAclAllowedSources = lb.parseAclSources(val)
-	}
+	globalAclAllowedSources := lb.getGlobalAclAllowedSources(service)
 
 	connectionTimeout, err := getIntAnnotation(service, LoadbalancerAnnotationIdleConnectionTimeout, DefaultIdleConnectionTimeout)
 	if err != nil {
@@ -154,6 +150,24 @@ func (lb *loadbalancer) desiredVpcLoadbalancerListener(service *corev1.Service) 
 	return listener
 }
 
+// getGlobalAclAllowedSources returns global allowed sources from Service.spec.loadBalancerSourceRanges
+// and the Thalassa acl-allowed-sources annotation. Sources from both are combined (union).
+func (lb *loadbalancer) getGlobalAclAllowedSources(service *corev1.Service) []string {
+	var sources []string
+
+	sources = append(sources, lb.validateAclSources(service.Spec.LoadBalancerSourceRanges, "service.spec.loadBalancerSourceRanges")...)
+
+	if val, ok := service.Annotations[LoadbalancerAnnotationAclAllowedSources]; ok {
+		sources = append(sources, lb.parseAclSources(val)...)
+	}
+
+	result := lb.removeDuplicateStrings(sources)
+	if result == nil {
+		return []string{}
+	}
+	return result
+}
+
 // getPerPortAclAllowedSources returns the allowed sources for a specific port by checking both port name and port number annotations
 func (lb *loadbalancer) getPerPortAclAllowedSources(service *corev1.Service, port corev1.ServicePort) []string {
 	var allowedSources []string
@@ -184,8 +198,12 @@ func (lb *loadbalancer) getPerPortAclAllowedSources(service *corev1.Service, por
 
 // parseAclSources parses a comma-separated string of CIDR ranges and validates each one
 func (lb *loadbalancer) parseAclSources(sourcesStr string) []string {
-	validSources := make([]string, 0)
-	sources := strings.Split(sourcesStr, ",")
+	return lb.validateAclSources(strings.Split(sourcesStr, ","), "acl-allowed-sources annotation")
+}
+
+// validateAclSources validates a list of CIDR ranges, skipping empty and invalid entries
+func (lb *loadbalancer) validateAclSources(sources []string, sourceName string) []string {
+	validSources := make([]string, 0, len(sources))
 
 	for _, source := range sources {
 		source = strings.TrimSpace(source)
@@ -193,9 +211,8 @@ func (lb *loadbalancer) parseAclSources(sourcesStr string) []string {
 			continue
 		}
 
-		// Validate that each entry is an IP or CIDR
 		if _, _, err := net.ParseCIDR(source); err != nil {
-			klog.Errorf("invalid CIDR in acl-allowed-sources annotation: %v", err)
+			klog.Errorf("invalid CIDR in %s: %v", sourceName, err)
 			continue
 		}
 		validSources = append(validSources, source)
