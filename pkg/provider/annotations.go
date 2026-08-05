@@ -44,6 +44,7 @@ const (
 
 	// LoadbalancerAnnotationAclAllowedSources is a comma separated list of CIDR ranges that are allowed to access the loadbalancer listener ports. Default no ACL, allow any source
 	// CIDR ranges can be ipv4 or ipv6, but must be compatible with the public network used (i.g. ipv4 CIDR ranges for loadbalancers if the public network is ipv4)
+	// Merged with Service.spec.loadBalancerSourceRanges and per-port ACL annotations when configured.
 	LoadbalancerAnnotationAclAllowedSources = "loadbalancer.k8s.thalassa.cloud/acl-allowed-sources"
 
 	// LoadbalancerAnnotationAclAllowedSourcesPort is a per-port ACL configuration annotation.

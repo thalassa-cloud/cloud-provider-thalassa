@@ -149,6 +149,30 @@ spec:
 
 ### Access Control Lists (ACL)
 
+Allowed sources can be configured via `spec.loadBalancerSourceRanges`, the global ACL annotation, and per-port ACL annotations. All configured sources are combined (union) for each listener. When nothing is configured, all sources are allowed.
+
+#### Service.spec.loadBalancerSourceRanges
+
+**Type:** List of CIDR strings
+
+**Default:** Empty (no restriction from this field)
+
+**Description:** Standard Kubernetes field that restricts traffic to the specified client CIDR ranges on all listener ports. Combined with Thalassa ACL annotations when both are set.
+
+**Example:**
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  type: LoadBalancer
+  loadBalancerSourceRanges:
+    - "203.0.113.0/24"
+    - "198.51.100.0/24"
+```
+
 #### Global ACL Configuration
 
 **Annotation:** `loadbalancer.k8s.thalassa.cloud/acl-allowed-sources`
@@ -157,7 +181,7 @@ spec:
 
 **Default:** Empty (allow all sources)
 
-**Description:** Comma-separated list of CIDR ranges that are allowed to access all load balancer listener ports. Supports both IPv4 and IPv6 CIDR ranges, but must be compatible with the public network used (e.g., IPv4 CIDR ranges for IPv4 load balancers).
+**Description:** Comma-separated list of CIDR ranges that are allowed to access all load balancer listener ports. Supports both IPv4 and IPv6 CIDR ranges, but must be compatible with the public network used (e.g., IPv4 CIDR ranges for IPv4 load balancers). Combined with `spec.loadBalancerSourceRanges` and per-port ACL annotations when configured.
 
 **Example:**
 
@@ -227,7 +251,7 @@ spec:
       targetPort: 8443
 ```
 
-**Example with combined global and per-port ACLs:**
+**Example with combined loadBalancerSourceRanges and ACL annotations:**
 
 ```yaml
 apiVersion: v1
@@ -237,11 +261,13 @@ metadata:
   annotations:
     # Global ACL applies to all ports
     loadbalancer.k8s.thalassa.cloud/acl-allowed-sources: "10.0.0.0/8,192.168.1.0/24"
-    # Per-port ACLs are combined with global ACL
+    # Per-port ACLs are combined with global ACL and loadBalancerSourceRanges
     loadbalancer.k8s.thalassa.cloud/acl-port-http: "172.16.0.0/12"
     loadbalancer.k8s.thalassa.cloud/acl-port-443: "10.10.0.0/16"
 spec:
   type: LoadBalancer
+  loadBalancerSourceRanges:
+    - "203.0.113.0/24"
   ports:
     - name: http
       port: 80
@@ -253,8 +279,8 @@ spec:
 
 **Result:**
 
-- Port 80 (http): `10.0.0.0/8`, `192.168.1.0/24`, `172.16.0.0/12`
-- Port 443 (https): `10.0.0.0/8`, `192.168.1.0/24`, `10.10.0.0/16`
+- Port 80 (http): `203.0.113.0/24`, `10.0.0.0/8`, `192.168.1.0/24`, `172.16.0.0/12`
+- Port 443 (https): `203.0.113.0/24`, `10.0.0.0/8`, `192.168.1.0/24`, `10.10.0.0/16`
 
 ## Load Balancing Policy
 
@@ -711,4 +737,4 @@ spec:
 
 6. **Per-Port ACL Configuration**: You can configure different ACL rules for different ports using the `loadbalancer.k8s.thalassa.cloud/acl-port-{port-name-or-number}` annotation format. Both port names and port numbers are supported. When both global and per-port ACLs are configured, they are combined (union) for each port.
 
-7. **ACL Annotation Priority**: Per-port ACL annotations take precedence over global ACL annotations. If a port has both a port name and port number annotation, both are combined. Invalid CIDR ranges in annotations are logged as errors and skipped.
+7. **ACL Source Combination**: `spec.loadBalancerSourceRanges`, the global ACL annotation, and per-port ACL annotations are combined (union) for each port. If a port has both a port name and port number annotation, both are included. Invalid CIDR ranges are logged as errors and skipped.
