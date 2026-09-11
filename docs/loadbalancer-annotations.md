@@ -11,6 +11,8 @@ The Thalassa Cloud Provider supports various annotations on Kubernetes Services 
 | `loadbalancer.k8s.thalassa.cloud/internal`                       | Boolean                | `false`             | Create an internal load balancer (immutable after creation)            |
 | `loadbalancer.k8s.thalassa.cloud/security-groups`                | Comma-separated string | Empty               | Security group IDs to attach to the load balancer                      |
 | `loadbalancer.k8s.thalassa.cloud/create-security-group`          | Boolean                | `false`             | Automatically create and manage a security group for the load balancer |
+| `loadbalancer.k8s.thalassa.cloud/security-group-allow-icmp`     | Boolean                | `false`             | Allow ICMP on the managed security group (requires create-security-group) |
+| `loadbalancer.k8s.thalassa.cloud/security-group-icmp-allowed-sources` | Comma-separated string | Inherit from ACL | CIDRs allowed for ICMP; inherits global ACL when unset |
 | `loadbalancer.k8s.thalassa.cloud/reserved-ip`                    | String                 | Empty               | Reserved IP identity to attach at create; updates reconcile; empty or removed detaches |
 | `loadbalancer.k8s.thalassa.cloud/acl-allowed-sources`            | Comma-separated string | Empty (allow all)   | Global CIDR ranges allowed to access all listener ports                |
 | `loadbalancer.k8s.thalassa.cloud/acl-port-{port-name-or-number}` | Comma-separated string | Empty               | Per-port CIDR ranges (combined with global ACL)                        |
@@ -146,6 +148,52 @@ metadata:
 spec:
   type: LoadBalancer
 ```
+
+### Managed Security Group ICMP
+
+When `loadbalancer.k8s.thalassa.cloud/create-security-group` is enabled, you can optionally allow ICMP (for example ping) on the managed security group.
+
+**Annotations:**
+
+| Annotation | Type | Default | Description |
+| --- | --- | --- | --- |
+| `loadbalancer.k8s.thalassa.cloud/security-group-allow-icmp` | Boolean | `false` | Enable ICMP ingress rules on the managed security group |
+| `loadbalancer.k8s.thalassa.cloud/security-group-icmp-allowed-sources` | Comma-separated CIDRs | Inherit | Optional ICMP source CIDRs. When unset, inherits from `spec.loadBalancerSourceRanges` and `acl-allowed-sources` |
+
+If ICMP is enabled but no sources are available (no custom ICMP sources and no global ACL), no ICMP rules are created (fail closed).
+
+**Example with inherited ACL sources:**
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+  annotations:
+    loadbalancer.k8s.thalassa.cloud/create-security-group: "true"
+    loadbalancer.k8s.thalassa.cloud/security-group-allow-icmp: "true"
+    loadbalancer.k8s.thalassa.cloud/acl-allowed-sources: "10.0.0.0/8,192.168.1.0/24"
+spec:
+  type: LoadBalancer
+```
+
+**Example with custom ICMP sources:**
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+  annotations:
+    loadbalancer.k8s.thalassa.cloud/create-security-group: "true"
+    loadbalancer.k8s.thalassa.cloud/security-group-allow-icmp: "true"
+    loadbalancer.k8s.thalassa.cloud/security-group-icmp-allowed-sources: "203.0.113.0/24"
+    loadbalancer.k8s.thalassa.cloud/acl-allowed-sources: "10.0.0.0/8"
+spec:
+  type: LoadBalancer
+```
+
+In the custom example, listener ACL uses `10.0.0.0/8` while ICMP is limited to `203.0.113.0/24`.
 
 ### Access Control Lists (ACL)
 

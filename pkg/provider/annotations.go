@@ -63,6 +63,16 @@ const (
 	// The security group will be deleted when the loadbalancer is deleted.
 	LoadBalancerAnnotationCreateSecurityGroup = "loadbalancer.k8s.thalassa.cloud/create-security-group"
 
+	// LoadBalancerAnnotationSecurityGroupAllowICMP enables ICMP ingress on the managed security group.
+	// Only applies when create-security-group is true. Default is false.
+	LoadBalancerAnnotationSecurityGroupAllowICMP = "loadbalancer.k8s.thalassa.cloud/security-group-allow-icmp"
+
+	// LoadBalancerAnnotationSecurityGroupICMPAllowedSources is an optional comma-separated list of CIDR ranges
+	// allowed for ICMP on the managed security group.
+	// When unset, sources are inherited from Service.spec.loadBalancerSourceRanges and
+	// loadbalancer.k8s.thalassa.cloud/acl-allowed-sources. When set (including empty), that value is used as-is.
+	LoadBalancerAnnotationSecurityGroupICMPAllowedSources = "loadbalancer.k8s.thalassa.cloud/security-group-icmp-allowed-sources"
+
 	// LoadBalancerAnnotationReservedIP is the identity of a reserved IP to attach when the load balancer is created.
 	// Updates reconcile attachment when the value changes; removing the annotation or setting an empty value detaches.
 	LoadBalancerAnnotationReservedIP = "loadbalancer.k8s.thalassa.cloud/reserved-ip"
