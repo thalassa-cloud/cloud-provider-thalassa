@@ -10,7 +10,7 @@ The Cloud Controller Manager integrates Kubernetes with Thalassa Cloud's infrast
 
 - Load balancers for Services of type `LoadBalancer` are created and kept in sync
 - Per-port access control lists (ACLs) via annotations and `spec.loadBalancerSourceRanges`; global and per-port ACLs can be combined
-- Optional managed security group per Service (created, updated and cleaned up automatically)
+- Optional managed security group per Service (created, updated and cleaned up automatically), with optional ICMP allow rules
 - Node metadata and lifecycle integration
 - Zone and region labels for nodes
 

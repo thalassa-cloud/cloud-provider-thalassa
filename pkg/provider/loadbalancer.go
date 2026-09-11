@@ -792,6 +792,7 @@ func (lb *loadbalancer) ensureManagedSecurityGroup(ctx context.Context, service 
 	annotations := lb.GetAnnotationsForVpcLoadbalancer(service)
 
 	ingress := lb.buildIngressRulesFromListeners(desiredListeners)
+	ingress = append(ingress, lb.buildIcmpIngressRules(service)...)
 	egress := []iaas.SecurityGroupRule{
 		// allow all outbound traffic
 		{
@@ -881,19 +882,13 @@ func (lb *loadbalancer) buildIngressRulesFromListeners(listeners []iaas.VpcLoadb
 	priority := int32(100)
 	for _, l := range listeners {
 		for _, src := range l.AllowedSources {
-			ipVer := iaas.SecurityGroupIPVersionIPv4
-			if _, ipnet, err := net.ParseCIDR(src); err == nil {
-				if ip := ipnet.IP; ip != nil && ip.To4() == nil {
-					ipVer = iaas.SecurityGroupIPVersionIPv6
-				}
-			}
 			proto := iaas.SecurityGroupRuleProtocolTCP
 			if strings.ToLower(string(l.Protocol)) == "udp" {
 				proto = iaas.SecurityGroupRuleProtocolUDP
 			}
 			rules = append(rules, iaas.SecurityGroupRule{
 				Name:          fmt.Sprintf("%s-%d", strings.ToLower(string(l.Protocol)), l.Port),
-				IPVersion:     ipVer,
+				IPVersion:     securityGroupIPVersionForCIDR(src),
 				Protocol:      proto,
 				Priority:      priority,
 				RemoteType:    iaas.SecurityGroupRuleRemoteTypeAddress,
@@ -905,6 +900,75 @@ func (lb *loadbalancer) buildIngressRulesFromListeners(listeners []iaas.VpcLoadb
 		}
 	}
 	return rules
+}
+
+// shouldAllowICMP returns true when the managed security group should allow ICMP ingress.
+func (lb *loadbalancer) shouldAllowICMP(service *corev1.Service) bool {
+	enabled, err := getBoolAnnotation(service, LoadBalancerAnnotationSecurityGroupAllowICMP, false)
+	if err != nil {
+		klog.Errorf("invalid %s annotation: %v", LoadBalancerAnnotationSecurityGroupAllowICMP, err)
+		return false
+	}
+	return enabled
+}
+
+// getIcmpAllowedSources returns CIDR sources for ICMP on the managed security group.
+// If security-group-icmp-allowed-sources is set, that value is used.
+// Otherwise sources are inherited from global ACL configuration (loadBalancerSourceRanges + acl-allowed-sources).
+func (lb *loadbalancer) getIcmpAllowedSources(service *corev1.Service) []string {
+	if val, ok := service.Annotations[LoadBalancerAnnotationSecurityGroupICMPAllowedSources]; ok {
+		return lb.validateAclSources(strings.Split(val, ","), LoadBalancerAnnotationSecurityGroupICMPAllowedSources)
+	}
+	return lb.getGlobalAclAllowedSources(service)
+}
+
+// buildIcmpIngressRules creates ICMP ingress rules when security-group-allow-icmp is enabled.
+// No rules are created when ICMP is disabled or when no allowed sources are available (fail closed).
+func (lb *loadbalancer) buildIcmpIngressRules(service *corev1.Service) []iaas.SecurityGroupRule {
+	if !lb.shouldAllowICMP(service) {
+		return nil
+	}
+
+	sources := lb.getIcmpAllowedSources(service)
+	if len(sources) == 0 {
+		klog.Warningf("security-group-allow-icmp is enabled for service %s/%s but no ICMP allowed sources are configured; skipping ICMP rules",
+			service.Namespace, service.Name)
+		return nil
+	}
+
+	rules := make([]iaas.SecurityGroupRule, 0, len(sources))
+	// Keep ICMP priorities near the top of the allowed range and distinct from listener rules (100+).
+	priority := int32(190)
+	for _, src := range sources {
+		if priority >= 200 {
+			klog.Errorf("too many ICMP allowed sources for service %s/%s; truncating ICMP rules at priority limit",
+				service.Namespace, service.Name)
+			break
+		}
+		rules = append(rules, iaas.SecurityGroupRule{
+			Name:          "allow-icmp",
+			IPVersion:     securityGroupIPVersionForCIDR(src),
+			Protocol:      iaas.SecurityGroupRuleProtocolICMP,
+			Priority:      priority,
+			RemoteType:    iaas.SecurityGroupRuleRemoteTypeAddress,
+			RemoteAddress: ptr.To(src),
+			// Match Thalassa convention for ICMP (type/code encoded as port range); 1/1 allows echo.
+			PortRangeMin: 1,
+			PortRangeMax: 1,
+			Policy:       iaas.SecurityGroupRulePolicyAllow,
+		})
+		priority++
+	}
+	return rules
+}
+
+func securityGroupIPVersionForCIDR(cidr string) iaas.SecurityGroupIPVersion {
+	if _, ipnet, err := net.ParseCIDR(cidr); err == nil {
+		if ip := ipnet.IP; ip != nil && ip.To4() == nil {
+			return iaas.SecurityGroupIPVersionIPv6
+		}
+	}
+	return iaas.SecurityGroupIPVersionIPv4
 }
 
 // generateSecurityGroupName returns a short name within API constraints
