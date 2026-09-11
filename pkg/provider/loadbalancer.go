@@ -793,27 +793,7 @@ func (lb *loadbalancer) ensureManagedSecurityGroup(ctx context.Context, service 
 
 	ingress := lb.buildIngressRulesFromListeners(desiredListeners)
 	ingress = append(ingress, lb.buildIcmpIngressRules(service)...)
-	egress := []iaas.SecurityGroupRule{
-		// allow all outbound traffic
-		{
-			Name:          "allow-all-outbound",
-			IPVersion:     iaas.SecurityGroupIPVersionIPv4,
-			Protocol:      iaas.SecurityGroupRuleProtocolAll,
-			Priority:      100,
-			RemoteType:    iaas.SecurityGroupRuleRemoteTypeAddress,
-			RemoteAddress: ptr.To("0.0.0.0/0"),
-			Policy:        iaas.SecurityGroupRulePolicyAllow,
-		},
-		{
-			Name:          "allow-all-outbound",
-			IPVersion:     iaas.SecurityGroupIPVersionIPv6,
-			Protocol:      iaas.SecurityGroupRuleProtocolAll,
-			Priority:      110,
-			RemoteType:    iaas.SecurityGroupRuleRemoteTypeAddress,
-			RemoteAddress: ptr.To("::/0"),
-			Policy:        iaas.SecurityGroupRulePolicyAllow,
-		},
-	}
+	egress := lb.buildEgressRules()
 
 	if sg == nil {
 		// create
@@ -882,6 +862,11 @@ func (lb *loadbalancer) buildIngressRulesFromListeners(listeners []iaas.VpcLoadb
 	priority := int32(100)
 	for _, l := range listeners {
 		for _, src := range l.AllowedSources {
+			if priority >= 190 {
+				// Reserve 190-199 for ICMP rules.
+				klog.Errorf("too many listener security group rules; truncating at priority limit")
+				return rules
+			}
 			proto := iaas.SecurityGroupRuleProtocolTCP
 			if strings.ToLower(string(l.Protocol)) == "udp" {
 				proto = iaas.SecurityGroupRuleProtocolUDP
@@ -897,9 +882,40 @@ func (lb *loadbalancer) buildIngressRulesFromListeners(listeners []iaas.VpcLoadb
 				PortRangeMax:  int32(l.Port),
 				Policy:        iaas.SecurityGroupRulePolicyAllow,
 			})
+			priority++
 		}
 	}
 	return rules
+}
+
+// buildEgressRules returns default allow-all outbound rules for the managed security group.
+// Policy is required by the API. Port ranges are set to the full valid range because the
+// client always serializes portRangeMin/Max (zero values are rejected as invalid).
+func (lb *loadbalancer) buildEgressRules() []iaas.SecurityGroupRule {
+	return []iaas.SecurityGroupRule{
+		{
+			Name:          "allow-all-outbound-ipv4",
+			IPVersion:     iaas.SecurityGroupIPVersionIPv4,
+			Protocol:      iaas.SecurityGroupRuleProtocolAll,
+			Priority:      100,
+			RemoteType:    iaas.SecurityGroupRuleRemoteTypeAddress,
+			RemoteAddress: ptr.To("0.0.0.0/0"),
+			PortRangeMin:  1,
+			PortRangeMax:  65534,
+			Policy:        iaas.SecurityGroupRulePolicyAllow,
+		},
+		{
+			Name:          "allow-all-outbound-ipv6",
+			IPVersion:     iaas.SecurityGroupIPVersionIPv6,
+			Protocol:      iaas.SecurityGroupRuleProtocolAll,
+			Priority:      110,
+			RemoteType:    iaas.SecurityGroupRuleRemoteTypeAddress,
+			RemoteAddress: ptr.To("::/0"),
+			PortRangeMin:  1,
+			PortRangeMax:  65534,
+			Policy:        iaas.SecurityGroupRulePolicyAllow,
+		},
+	}
 }
 
 // shouldAllowICMP returns true when the managed security group should allow ICMP ingress.

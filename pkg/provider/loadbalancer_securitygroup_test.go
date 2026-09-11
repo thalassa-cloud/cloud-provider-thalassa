@@ -295,3 +295,46 @@ func TestSecurityGroupIPVersionForCIDR(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildEgressRules(t *testing.T) {
+	lb := &loadbalancer{}
+	rules := lb.buildEgressRules()
+
+	require.Len(t, rules, 2)
+	for i, rule := range rules {
+		assert.Equal(t, iaas.SecurityGroupRulePolicyAllow, rule.Policy, "rule %d must set policy", i)
+		assert.Equal(t, iaas.SecurityGroupRuleProtocolAll, rule.Protocol)
+		assert.Equal(t, iaas.SecurityGroupRuleRemoteTypeAddress, rule.RemoteType)
+		assert.Greater(t, rule.PortRangeMin, int32(0))
+		assert.Greater(t, rule.PortRangeMax, int32(0))
+		assert.Less(t, rule.PortRangeMax, int32(65535))
+		assert.NotEmpty(t, rule.Name)
+		require.NotNil(t, rule.RemoteAddress)
+	}
+
+	assert.Equal(t, iaas.SecurityGroupIPVersionIPv4, rules[0].IPVersion)
+	assert.Equal(t, "0.0.0.0/0", *rules[0].RemoteAddress)
+	assert.Equal(t, iaas.SecurityGroupIPVersionIPv6, rules[1].IPVersion)
+	assert.Equal(t, "::/0", *rules[1].RemoteAddress)
+	assert.NotEqual(t, rules[0].Name, rules[1].Name)
+	assert.NotEqual(t, rules[0].Priority, rules[1].Priority)
+}
+
+func TestBuildIngressRulesFromListeners_UniquePriorities(t *testing.T) {
+	lb := &loadbalancer{}
+	listeners := []iaas.VpcLoadbalancerListener{
+		{Protocol: iaas.ProtocolTCP, Port: 80, AllowedSources: []string{"0.0.0.0/0"}},
+		{Protocol: iaas.ProtocolTCP, Port: 443, AllowedSources: []string{"0.0.0.0/0"}},
+		{Protocol: iaas.ProtocolTCP, Port: 22, AllowedSources: []string{"0.0.0.0/0"}},
+	}
+
+	rules := lb.buildIngressRulesFromListeners(listeners)
+	require.Len(t, rules, 3)
+
+	seen := map[int32]bool{}
+	for _, rule := range rules {
+		assert.False(t, seen[rule.Priority], "duplicate priority %d", rule.Priority)
+		seen[rule.Priority] = true
+		assert.Equal(t, iaas.SecurityGroupRulePolicyAllow, rule.Policy)
+	}
+}

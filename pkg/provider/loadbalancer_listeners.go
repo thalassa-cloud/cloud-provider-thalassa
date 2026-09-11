@@ -23,7 +23,7 @@ func (lb *loadbalancer) getTargetGroupIdentityForListener(service *corev1.Servic
 			klog.Infof("target group %q does not match desired labels, skipping: Labels: %v, Desired: %v", targetGroup.Identity, targetGroup.Labels, desiredLabels)
 			continue
 		}
-		klog.Infof("found target group %q for listener %q", targetGroup.Identity, listener.Port)
+		klog.Infof("found target group %q for listener %d", targetGroup.Identity, listener.Port)
 		return targetGroup.Identity
 	}
 	klog.Infof("no target group identity found for listener %q", listener.Name)
