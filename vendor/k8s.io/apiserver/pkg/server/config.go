@@ -19,6 +19,7 @@ package server
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/base32"
 	"fmt"
 	"net"
@@ -55,6 +56,7 @@ import (
 	discoveryendpoint "k8s.io/apiserver/pkg/endpoints/discovery/aggregated"
 	"k8s.io/apiserver/pkg/endpoints/filterlatency"
 	genericapifilters "k8s.io/apiserver/pkg/endpoints/filters"
+	"k8s.io/apiserver/pkg/endpoints/filters/impersonation"
 	apiopenapi "k8s.io/apiserver/pkg/endpoints/openapi"
 	apirequest "k8s.io/apiserver/pkg/endpoints/request"
 	genericfeatures "k8s.io/apiserver/pkg/features"
@@ -62,6 +64,7 @@ import (
 	"k8s.io/apiserver/pkg/server/dynamiccertificates"
 	"k8s.io/apiserver/pkg/server/egressselector"
 	genericfilters "k8s.io/apiserver/pkg/server/filters"
+	"k8s.io/apiserver/pkg/server/flagz"
 	"k8s.io/apiserver/pkg/server/healthz"
 	"k8s.io/apiserver/pkg/server/routes"
 	"k8s.io/apiserver/pkg/server/routine"
@@ -73,13 +76,12 @@ import (
 	flowcontrolrequest "k8s.io/apiserver/pkg/util/flowcontrol/request"
 	"k8s.io/client-go/informers"
 	restclient "k8s.io/client-go/rest"
+	basecompatibility "k8s.io/component-base/compatibility"
 	"k8s.io/component-base/featuregate"
 	"k8s.io/component-base/logs"
 	"k8s.io/component-base/metrics/features"
 	"k8s.io/component-base/metrics/prometheus/slis"
 	"k8s.io/component-base/tracing"
-	utilversion "k8s.io/component-base/version"
-	"k8s.io/component-base/zpages/flagz"
 	"k8s.io/klog/v2"
 	openapicommon "k8s.io/kube-openapi/pkg/common"
 	"k8s.io/kube-openapi/pkg/spec3"
@@ -153,7 +155,17 @@ type Config struct {
 
 	// EffectiveVersion determines which apis and features are available
 	// based on when the api/feature lifecyle.
-	EffectiveVersion utilversion.EffectiveVersion
+	EffectiveVersion basecompatibility.EffectiveVersion
+	// EmulationForwardCompatible is an option to implicitly enable all APIs which are introduced after the emulation version and
+	// have higher priority than APIs of the same group resource enabled at the emulation version.
+	// If true, all APIs that have higher priority than the APIs(beta+) of the same group resource enabled at the emulation version will be installed.
+	// This is needed when a controller implementation migrates to newer API versions, for the binary version, and also uses the newer API versions even when emulation version is set.
+	// Not applicable to alpha APIs.
+	EmulationForwardCompatible bool
+	// RuntimeConfigEmulationForwardCompatible is an option to explicitly enable specific APIs introduced after the emulation version through the runtime-config.
+	// If true, APIs identified by group/version that are enabled in the --runtime-config flag will be installed even if it is introduced after the emulation version. --runtime-config flag values that identify multiple APIs, such as api/all,api/ga,api/beta, are not influenced by this flag and will only enable APIs available at the current emulation version.
+	// If false, error would be thrown if any GroupVersion or GroupVersionResource explicitly enabled in the --runtime-config flag is introduced after the emulation version.
+	RuntimeConfigEmulationForwardCompatible bool
 	// FeatureGate is a way to plumb feature gate through if you have them.
 	FeatureGate featuregate.FeatureGate
 	// AuditBackend is where audit events are sent to.
@@ -353,6 +365,13 @@ type SecureServingInfo struct {
 	// CipherSuites optionally overrides the list of allowed cipher suites for the server.
 	// Values are from tls package constants (https://golang.org/pkg/crypto/tls/#pkg-constants).
 	CipherSuites []uint16
+
+	// CurvePreferences optionally specifies the set of allowed key exchange mechanisms for the server.
+	// The order of the list is ignored, and key exchange mechanisms
+	// are chosen by Go from this list using an internal preference order.
+	// If empty, the default Go curves will be used.
+	// Values are from the Go crypto/tls CurveID constants (https://golang.org/pkg/crypto/tls/#CurveID).
+	CurvePreferences []tls.CurveID
 
 	// HTTP2MaxStreamsPerConnection is the limit that the api server imposes on each client.
 	// A value of zero means to use the default provided by golang's HTTP/2 support.
@@ -560,6 +579,18 @@ func (c *Config) AddHealthChecks(healthChecks ...healthz.HealthChecker) {
 	c.HealthzChecks = append(c.HealthzChecks, healthChecks...)
 	c.LivezChecks = append(c.LivezChecks, healthChecks...)
 	c.ReadyzChecks = append(c.ReadyzChecks, healthChecks...)
+}
+
+// AddHealthzChecks adds the provided health checks to our config to be exposed by the
+// healthz endpoint of our configured apiserver.
+func (c *Config) AddHealthzChecks(healthChecks ...healthz.HealthChecker) {
+	c.HealthzChecks = append(c.HealthzChecks, healthChecks...)
+}
+
+// AddLivezChecks adds the provided health checks to our config to be exposed by the
+// livez endpoint of our configured apiserver.
+func (c *Config) AddLivezChecks(healthChecks ...healthz.HealthChecker) {
+	c.LivezChecks = append(c.LivezChecks, healthChecks...)
 }
 
 // AddReadyzChecks adds a health check to our config to be exposed by the readyz endpoint
@@ -807,6 +838,7 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 		UnprotectedDebugSocket:         debugSocket,
 
 		listedPathProvider: apiServerHandler,
+		Flagz:              c.Flagz,
 
 		minRequestTimeout:                   time.Duration(c.MinRequestTimeout) * time.Second,
 		ShutdownTimeout:                     c.RequestTimeout,
@@ -839,20 +871,20 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 		StorageReadinessHook:  NewStorageReadinessHook(c.StorageInitializationTimeout),
 		StorageVersionManager: c.StorageVersionManager,
 
-		EffectiveVersion: c.EffectiveVersion,
-		FeatureGate:      c.FeatureGate,
+		EffectiveVersion:                        c.EffectiveVersion,
+		EmulationForwardCompatible:              c.EmulationForwardCompatible,
+		RuntimeConfigEmulationForwardCompatible: c.RuntimeConfigEmulationForwardCompatible,
+		FeatureGate:                             c.FeatureGate,
 
 		muxAndDiscoveryCompleteSignals: map[string]<-chan struct{}{},
 	}
 
-	if c.FeatureGate.Enabled(genericfeatures.AggregatedDiscoveryEndpoint) {
-		manager := c.AggregatedDiscoveryGroupManager
-		if manager == nil {
-			manager = discoveryendpoint.NewResourceManager("apis")
-		}
-		s.AggregatedDiscoveryGroupManager = manager
-		s.AggregatedLegacyDiscoveryGroupManager = discoveryendpoint.NewResourceManager("api")
+	manager := c.AggregatedDiscoveryGroupManager
+	if manager == nil {
+		manager = discoveryendpoint.NewResourceManager("apis")
 	}
+	s.AggregatedDiscoveryGroupManager = manager
+	s.AggregatedLegacyDiscoveryGroupManager = discoveryendpoint.NewResourceManager("api")
 	for {
 		if c.JSONPatchMaxCopyBytes <= 0 {
 			break
@@ -1020,8 +1052,13 @@ func DefaultBuildHandlerChain(apiHandler http.Handler, c *Config) http.Handler {
 	}
 
 	handler = filterlatency.TrackCompleted(handler)
-	handler = genericapifilters.WithImpersonation(handler, c.Authorization.Authorizer, c.Serializer)
-	handler = filterlatency.TrackStarted(handler, c.TracerProvider, "impersonation")
+	if c.FeatureGate.Enabled(genericfeatures.ConstrainedImpersonation) {
+		handler = impersonation.WithConstrainedImpersonation(handler, c.Authorization.Authorizer, c.Serializer)
+		handler = filterlatency.TrackStarted(handler, c.TracerProvider, "constrainedimpersonation")
+	} else {
+		handler = impersonation.WithImpersonation(handler, c.Authorization.Authorizer, c.Serializer)
+		handler = filterlatency.TrackStarted(handler, c.TracerProvider, "impersonation")
+	}
 
 	handler = filterlatency.TrackCompleted(handler)
 	handler = genericapifilters.WithAudit(handler, c.AuditBackend, c.AuditPolicyRuleEvaluator, c.LongRunningFunc)
@@ -1030,6 +1067,9 @@ func DefaultBuildHandlerChain(apiHandler http.Handler, c *Config) http.Handler {
 	failedHandler := genericapifilters.Unauthorized(c.Serializer)
 	failedHandler = genericapifilters.WithFailedAuthenticationAudit(failedHandler, c.AuditBackend, c.AuditPolicyRuleEvaluator)
 
+	// WithTracing comes after authentication so we can allow authenticated
+	// clients to influence sampling.
+	handler = genericapifilters.WithTracing(handler, c.TracerProvider)
 	failedHandler = filterlatency.TrackCompleted(failedHandler)
 	handler = filterlatency.TrackCompleted(handler)
 	handler = genericapifilters.WithAuthentication(handler, c.Authentication.Authenticator, failedHandler, c.Authentication.APIAudiences, c.Authentication.RequestHeaderConfig)
@@ -1060,9 +1100,6 @@ func DefaultBuildHandlerChain(apiHandler http.Handler, c *Config) http.Handler {
 		handler = genericfilters.WithRetryAfter(handler, c.lifecycleSignals.NotAcceptingNewRequest.Signaled())
 	}
 	handler = genericfilters.WithHTTPLogging(handler)
-	if c.FeatureGate.Enabled(genericfeatures.APIServerTracing) {
-		handler = genericapifilters.WithTracing(handler, c.TracerProvider)
-	}
 	handler = genericapifilters.WithLatencyTrackers(handler)
 	// WithRoutine will execute future handlers in a separate goroutine and serving
 	// handler in current goroutine to minimize the stack memory usage. It must be
@@ -1108,15 +1145,11 @@ func installAPI(name string, s *GenericAPIServer, c *Config) {
 		}
 	}
 
-	routes.Version{Version: c.EffectiveVersion.BinaryVersion().Info()}.Install(s.Handler.GoRestfulContainer)
+	routes.Version{Version: c.EffectiveVersion.Info()}.Install(s.Handler.GoRestfulContainer)
 
 	if c.EnableDiscovery {
-		if c.FeatureGate.Enabled(genericfeatures.AggregatedDiscoveryEndpoint) {
-			wrapped := discoveryendpoint.WrapAggregatedDiscoveryToHandler(s.DiscoveryGroupManager, s.AggregatedDiscoveryGroupManager)
-			s.Handler.GoRestfulContainer.Add(wrapped.GenerateWebService("/apis", metav1.APIGroupList{}))
-		} else {
-			s.Handler.GoRestfulContainer.Add(s.DiscoveryGroupManager.WebService())
-		}
+		wrapped := discoveryendpoint.WrapAggregatedDiscoveryToHandler(s.DiscoveryGroupManager, s.AggregatedDiscoveryGroupManager, s.PeerAggregatedDiscoveryManager)
+		s.Handler.GoRestfulContainer.Add(wrapped.GenerateWebService("/apis", metav1.APIGroupList{}))
 	}
 	if c.FlowControl != nil {
 		c.FlowControl.Install(s.Handler.NonGoRestfulMux)

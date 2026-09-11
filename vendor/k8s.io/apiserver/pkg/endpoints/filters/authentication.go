@@ -44,6 +44,7 @@ type authenticationRecordMetricsFunc func(context.Context, *authenticator.Respon
 // the failed handler is used. On success, "Authorization" header is removed from the request and handler
 // is invoked to serve the request.
 func WithAuthentication(handler http.Handler, auth authenticator.Request, failed http.Handler, apiAuds authenticator.Audiences, requestHeaderConfig *authenticatorfactory.RequestHeaderConfig) http.Handler {
+	RegisterMetrics()
 	return withAuthentication(handler, auth, failed, apiAuds, requestHeaderConfig, recordAuthenticationMetrics)
 }
 
@@ -66,6 +67,7 @@ func withAuthentication(handler http.Handler, auth authenticator.Request, failed
 		}
 		resp, ok, err := auth.AuthenticateRequest(req)
 		authenticationFinish := time.Now()
+		genericapirequest.TrackAuthenticationLatency(req.Context(), authenticationFinish.Sub(authenticationStart))
 		defer func() {
 			metrics(req.Context(), resp, ok, err, apiAuds, authenticationStart, authenticationFinish)
 		}()
@@ -118,7 +120,6 @@ func withAuthentication(handler http.Handler, auth authenticator.Request, failed
 			// https://github.com/golang/net/commit/97aa3a539ec716117a9d15a4659a911f50d13c3c
 			w.Header().Set("Connection", "close")
 		}
-
 		req = req.WithContext(genericapirequest.WithUser(req.Context(), resp.User))
 		handler.ServeHTTP(w, req)
 	})

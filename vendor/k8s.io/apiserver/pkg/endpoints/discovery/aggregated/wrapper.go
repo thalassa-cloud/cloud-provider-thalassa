@@ -22,6 +22,7 @@ import (
 	apidiscoveryv2 "k8s.io/api/apidiscovery/v2"
 	apidiscoveryv2beta1 "k8s.io/api/apidiscovery/v2beta1"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/apimachinery/pkg/runtime/serializer/cbor"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
 	"github.com/emicklei/go-restful/v3"
@@ -33,19 +34,30 @@ import (
 )
 
 type WrappedHandler struct {
-	s          runtime.NegotiatedSerializer
-	handler    http.Handler
-	aggHandler http.Handler
+	s                     runtime.NegotiatedSerializer
+	handler               http.Handler
+	aggHandler            http.Handler
+	peerAggregatedHandler http.Handler
 }
 
 func (wrapped *WrappedHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
-	if utilfeature.DefaultFeatureGate.Enabled(genericfeatures.AggregatedDiscoveryEndpoint) {
-		mediaType, _ := negotiation.NegotiateMediaTypeOptions(req.Header.Get("Accept"), wrapped.s.SupportedMediaTypes(), DiscoveryEndpointRestrictions)
-		// mediaType.Convert looks at the request accept headers and is used to control whether the discovery document will be aggregated.
-		if IsAggregatedDiscoveryGVK(mediaType.Convert) {
-			wrapped.aggHandler.ServeHTTP(resp, req)
-			return
+	// mediaType.Convert looks at the request accept headers and is used to control whether the discovery document will be aggregated.
+	mediaType, _ := negotiation.NegotiateMediaTypeOptions(req.Header.Get("Accept"), wrapped.s.SupportedMediaTypes(), DiscoveryEndpointRestrictions)
+	if IsAggregatedDiscoveryGVK(mediaType.Convert) {
+		if utilfeature.DefaultFeatureGate.Enabled(genericfeatures.UnknownVersionInteroperabilityProxy) && mediaType.Convert.Version == "v2" {
+			if mediaType.Profile == "nopeer" {
+				NoPeerDiscoveryRequestCounter.Inc()
+				wrapped.aggHandler.ServeHTTP(resp, req)
+				return
+			}
+			if wrapped.peerAggregatedHandler != nil {
+				// Serve peer-aggregated discovery by default if provided.
+				wrapped.peerAggregatedHandler.ServeHTTP(resp, req)
+				return
+			}
 		}
+		wrapped.aggHandler.ServeHTTP(resp, req)
+		return
 	}
 	wrapped.handler.ServeHTTP(resp, req)
 }
@@ -72,10 +84,19 @@ func (wrapped *WrappedHandler) GenerateWebService(prefix string, returnType inte
 // emit the aggregated discovery by passing in the aggregated
 // discovery type in content negotiation headers: eg: (Accept:
 // application/json;v=v2;g=apidiscovery.k8s.io;as=APIGroupDiscoveryList)
-func WrapAggregatedDiscoveryToHandler(handler http.Handler, aggHandler http.Handler) *WrappedHandler {
+//
+// If peerAggregatedHandler is non-nil, it will be used to serve peer-aggregated
+// discovery requests which aggregate discovery information from peer API servers.
+// To request a no-peer aggregation, the client must include the "profile=nopeer" parameter in the
+// Accept header eg: (Accept: application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList;profile=nopeer).
+func WrapAggregatedDiscoveryToHandler(handler, aggHandler, peerAggregatedHandler http.Handler) *WrappedHandler {
 	scheme := runtime.NewScheme()
 	utilruntime.Must(apidiscoveryv2.AddToScheme(scheme))
 	utilruntime.Must(apidiscoveryv2beta1.AddToScheme(scheme))
-	codecs := serializer.NewCodecFactory(scheme)
-	return &WrappedHandler{codecs, handler, aggHandler}
+	var opts []serializer.CodecFactoryOptionsMutator
+	if utilfeature.DefaultFeatureGate.Enabled(genericfeatures.CBORServingAndStorage) {
+		opts = append(opts, serializer.WithSerializer(cbor.NewSerializerInfo))
+	}
+	codecs := serializer.NewCodecFactory(scheme, opts...)
+	return &WrappedHandler{codecs, handler, aggHandler, peerAggregatedHandler}
 }
