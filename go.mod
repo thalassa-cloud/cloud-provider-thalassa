@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/stretchr/testify v1.12.1
-	github.com/thalassa-cloud/client-go v0.37.0
+	github.com/thalassa-cloud/client-go v0.38.0
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.37.0
 	k8s.io/apimachinery v0.37.0
